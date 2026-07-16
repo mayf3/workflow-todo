@@ -1,0 +1,315 @@
+{
+  "definitionKey": "agent_self_task_v1",
+  "displayName": "Agent Self Task",
+  "description": "Personal task workflow for AI agents with efficiency and partner review gates",
+  "version": {
+    "versionNumber": 1,
+    "contextSchema": {
+      "type": "object",
+      "required": ["title", "description", "acceptanceCriteria"],
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "acceptanceCriteria": { "type": "string", "maxLength": 2000 },
+        "references": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri" }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "domain": {
+    "domainId": "${DOMAIN_ID}",
+    "domainKey": "workflow-todo",
+    "displayName": "Workflow Todo"
+  },
+  "nodes": [
+    {
+      "nodeKey": "propose",
+      "displayName": "Propose",
+      "orderIndex": 0,
+      "nodeType": "NORMAL",
+      "assigneeRefType": "WORKFLOW_CREATOR",
+      "instructions": "Describe what needs to be done and why",
+      "primaryAdvanceTransitionKey": "advance-to-efficiency-check"
+    },
+    {
+      "nodeKey": "efficiency_check",
+      "displayName": "Efficiency Check",
+      "orderIndex": 1,
+      "nodeType": "NORMAL",
+      "assigneeRefType": "FIXED_PRINCIPAL",
+      "fixedPrincipalId": "${EFFICIENCY_MANAGER_PRINCIPAL_ID}",
+      "instructions": "Review the proposal for efficiency concerns",
+      "primaryAdvanceTransitionKey": "advance-to-partner-check"
+    },
+    {
+      "nodeKey": "partner_check",
+      "displayName": "Partner Check",
+      "orderIndex": 2,
+      "nodeType": "NORMAL",
+      "assigneeRefType": "FIXED_PRINCIPAL",
+      "fixedPrincipalId": "${LOBSTER_PARTNER_PRINCIPAL_ID}",
+      "instructions": "Review the proposal from partner perspective",
+      "primaryAdvanceTransitionKey": "advance-to-execute"
+    },
+    {
+      "nodeKey": "execute",
+      "displayName": "Execute",
+      "orderIndex": 3,
+      "nodeType": "NORMAL",
+      "assigneeRefType": "WORKFLOW_CREATOR",
+      "instructions": "Carry out the approved task",
+      "primaryAdvanceTransitionKey": "advance-to-efficiency-accept"
+    },
+    {
+      "nodeKey": "efficiency_accept",
+      "displayName": "Efficiency Accept",
+      "orderIndex": 4,
+      "nodeType": "NORMAL",
+      "assigneeRefType": "FIXED_PRINCIPAL",
+      "fixedPrincipalId": "${EFFICIENCY_MANAGER_PRINCIPAL_ID}",
+      "instructions": "Verify the execution meets efficiency standards",
+      "primaryAdvanceTransitionKey": "advance-to-partner-accept"
+    },
+    {
+      "nodeKey": "partner_accept",
+      "displayName": "Partner Accept",
+      "orderIndex": 5,
+      "nodeType": "NORMAL",
+      "assigneeRefType": "FIXED_PRINCIPAL",
+      "fixedPrincipalId": "${LOBSTER_PARTNER_PRINCIPAL_ID}",
+      "instructions": "Verify the execution meets partner standards",
+      "primaryAdvanceTransitionKey": "advance-to-completed"
+    },
+    {
+      "nodeKey": "completed",
+      "displayName": "Completed",
+      "orderIndex": 6,
+      "nodeType": "TERMINAL"
+    }
+  ],
+  "transitions": [
+    {
+      "transitionKey": "advance-to-efficiency-check",
+      "displayName": "Submit for efficiency check",
+      "sourceNodeKey": "propose",
+      "targetNodeKey": "efficiency_check",
+      "transitionEffect": "ADVANCE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {
+          "summary": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "advance-to-partner-check",
+      "displayName": "Submit for partner check",
+      "sourceNodeKey": "efficiency_check",
+      "targetNodeKey": "partner_check",
+      "transitionEffect": "ADVANCE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {
+          "summary": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "advance-to-execute",
+      "displayName": "Approve for execution",
+      "sourceNodeKey": "partner_check",
+      "targetNodeKey": "execute",
+      "transitionEffect": "ADVANCE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {
+          "summary": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "advance-to-efficiency-accept",
+      "displayName": "Submit for efficiency acceptance",
+      "sourceNodeKey": "execute",
+      "targetNodeKey": "efficiency_accept",
+      "transitionEffect": "ADVANCE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {
+          "summary": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "advance-to-partner-accept",
+      "displayName": "Submit for partner acceptance",
+      "sourceNodeKey": "efficiency_accept",
+      "targetNodeKey": "partner_accept",
+      "transitionEffect": "ADVANCE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {
+          "summary": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "advance-to-completed",
+      "displayName": "Complete task",
+      "sourceNodeKey": "partner_accept",
+      "targetNodeKey": "completed",
+      "transitionEffect": "ADVANCE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {
+          "summary": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "return-to-propose-from-efficiency",
+      "displayName": "Return to propose from efficiency check",
+      "sourceNodeKey": "efficiency_check",
+      "targetNodeKey": "propose",
+      "transitionEffect": "RETURN",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 2000 },
+          "feedback": { "type": "string", "maxLength": 5000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "return-to-propose-from-partner",
+      "displayName": "Return to propose from partner check",
+      "sourceNodeKey": "partner_check",
+      "targetNodeKey": "propose",
+      "transitionEffect": "RETURN",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 2000 },
+          "feedback": { "type": "string", "maxLength": 5000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "return-to-execute-from-efficiency-accept",
+      "displayName": "Return to execute from efficiency accept",
+      "sourceNodeKey": "efficiency_accept",
+      "targetNodeKey": "execute",
+      "transitionEffect": "RETURN",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 2000 },
+          "feedback": { "type": "string", "maxLength": 5000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "return-to-execute-from-partner-accept",
+      "displayName": "Return to execute from partner accept",
+      "sourceNodeKey": "partner_accept",
+      "targetNodeKey": "execute",
+      "transitionEffect": "RETURN",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 2000 },
+          "feedback": { "type": "string", "maxLength": 5000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "terminate-from-propose",
+      "displayName": "Cancel task (propose)",
+      "sourceNodeKey": "propose",
+      "targetNodeKey": "completed",
+      "transitionEffect": "TERMINATE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 1000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "terminate-from-efficiency-check",
+      "displayName": "Cancel task (efficiency check)",
+      "sourceNodeKey": "efficiency_check",
+      "targetNodeKey": "completed",
+      "transitionEffect": "TERMINATE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 1000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "terminate-from-partner-check",
+      "displayName": "Cancel task (partner check)",
+      "sourceNodeKey": "partner_check",
+      "targetNodeKey": "completed",
+      "transitionEffect": "TERMINATE"
+    },
+    {
+      "transitionKey": "terminate-from-execute",
+      "displayName": "Cancel task (execute)",
+      "sourceNodeKey": "execute",
+      "targetNodeKey": "completed",
+      "transitionEffect": "TERMINATE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 1000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "terminate-from-efficiency-accept",
+      "displayName": "Cancel task (efficiency accept)",
+      "sourceNodeKey": "efficiency_accept",
+      "targetNodeKey": "completed",
+      "transitionEffect": "TERMINATE"
+    },
+    {
+      "transitionKey": "terminate-from-partner-accept",
+      "displayName": "Cancel task (partner accept)",
+      "sourceNodeKey": "partner_accept",
+      "targetNodeKey": "completed",
+      "transitionEffect": "TERMINATE"
+    }
+  ]
+}
