@@ -1,0 +1,24 @@
+{
+  "name": "workflow-todo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal / Agent task list built on svc-workflow",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "node --loader ts-node/esm scripts/smoke.ts",
+    "provision": "node --loader ts-node/esm scripts/provision.ts"
+  },
+  "dependencies": {
+    "zod": "^3.23.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  }
+}
