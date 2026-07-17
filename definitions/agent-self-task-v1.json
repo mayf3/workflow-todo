@@ -29,7 +29,7 @@
       "nodeKey": "propose",
       "displayName": "Propose",
       "orderIndex": 0,
-      "nodeType": "NORMAL",
+      "nodeType": "DRAFT",
       "assigneeRefType": "WORKFLOW_CREATOR",
       "instructions": "Describe what needs to be done and why",
       "primaryAdvanceTransitionKey": "advance-to-efficiency-check"
