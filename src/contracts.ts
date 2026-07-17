@@ -67,7 +67,9 @@ export interface WorkflowInstanceDetailFull {
   currentNodeVisitId: string;
   currentContext: ContextRevision;
   currentVisit: NodeVisit;
-  outgoingTransitions: OutgoingTransition[];
+  /** @deprecated use outgoing_transitions (snake_case from API) */
+  outgoingTransitions?: OutgoingTransition[];
+  outgoing_transitions: OutgoingTransition[];
 }
 
 export type WorkflowInstanceDetail =
@@ -80,7 +82,9 @@ export interface WorkflowInstanceSummary {
   definitionVersionId: string;
   definitionVersionStatus: string;
   createdByPrincipalId: string;
-  workflowStateVersion: number;
+  /** @deprecated use workflow_state_version (snake_case from API) */
+  workflowStateVersion?: number;
+  workflow_state_version: number;
   externalReference: string | null;
   externalUrl: string | null;
   metadata: JsonValue | null;
@@ -132,14 +136,16 @@ export interface NodeVisit {
 }
 
 export interface OutgoingTransition {
-  transitionId: string;
-  transitionKey: string;
-  displayName: string;
-  transitionEffect: string;
-  targetNode: PublicNodeSummary;
-  submissionSchema: JsonValue | null;
-  executableForActor: boolean;
-  blockedReason: string | null;
+  /** @deprecated use transition_id (snake_case from API) */
+  transitionId?: string;
+  transition_id: string;
+  transition_key: string;
+  display_name: string;
+  transition_effect: string;
+  target_node: PublicNodeSummary;
+  submission_schema: JsonValue | null;
+  executable_for_actor: boolean;
+  blocked_reason: string | null;
 }
 
 export interface SubmissionHistoryItem {

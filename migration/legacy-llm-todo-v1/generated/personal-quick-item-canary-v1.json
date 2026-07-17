@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "personal-quick-item-canary-v1",
+  "recordDigestAlgorithm": "sha256-rfc8785-jcs-full-record-v1",
+  "sourceDigestAlgorithm": "sha256-file-bytes-v1",
+  "batchId": "a02c7548-0f16-4ad6-a185-650393f72067",
+  "sourceSnapshotSha256": "284fe44af048d7aa453dae4385fae6e25730f9ed97e92516d44b4bda60fbbf3f",
+  "targetDefinitionKey": "personal_quick_item_v1",
+  "targetDefinitionVersion": 1,
+  "items": [
+    {
+      "legacyTodoId": "256",
+      "legacyRecordSha256": "53a5e36280dfdcbc395171ef0f9872f8d560f42cb7687286594f0bfb268956c2",
+      "mappingDecision": "REONBOARD_AS_PERSONAL_QUICK_ITEM",
+      "targetCreatorPrincipalRef": "DOGFOOD_USER",
+      "idempotencyKey": "legacy-llm-todo:256",
+      "context": {
+        "title": "准备手打柠檬茶材料，跟宝宝一起去卖柠檬茶",
+        "description": "if (去超市时) → 看看柠檬+茶叶在哪卖 → 拍照（10 min cap）",
+        "priority": "medium",
+        "legacyProvenance": {
+          "source": "llm-todo",
+          "legacyTodoId": "256",
+          "legacyRecordSha256": "53a5e36280dfdcbc395171ef0f9872f8d560f42cb7687286594f0bfb268956c2",
+          "sourceSnapshotSha256": "284fe44af048d7aa453dae4385fae6e25730f9ed97e92516d44b4bda60fbbf3f",
+          "legacyStatus": "pending",
+          "legacyCreatedAt": "2026-05-28 00:55:16",
+          "legacyDueDate": null,
+          "importBatchId": "a02c7548-0f16-4ad6-a185-650393f72067",
+          "importedAt": "2026-07-17T14:01:41Z"
+        }
+      }
+    },
+    {
+      "legacyTodoId": "238",
+      "legacyRecordSha256": "8b0aebe8ec22a5257ef16b14ed0dfd2c9767837ff2a3f5eeed2772bbabe6ef08",
+      "mappingDecision": "REONBOARD_AS_PERSONAL_QUICK_ITEM",
+      "targetCreatorPrincipalRef": "DOGFOOD_USER",
+      "idempotencyKey": "legacy-llm-todo:238",
+      "context": {
+        "title": "把公司报销条例和平台信息发给报销专家",
+        "description": "#115的前置任务。小马哥把报销条例、要求、使用的平台信息整理发给reimbursement-expert，让报销专家了解规则后再指导报销流程。",
+        "priority": "high",
+        "legacyProvenance": {
+          "source": "llm-todo",
+          "legacyTodoId": "238",
+          "legacyRecordSha256": "8b0aebe8ec22a5257ef16b14ed0dfd2c9767837ff2a3f5eeed2772bbabe6ef08",
+          "sourceSnapshotSha256": "284fe44af048d7aa453dae4385fae6e25730f9ed97e92516d44b4bda60fbbf3f",
+          "legacyStatus": "pending",
+          "legacyCreatedAt": "2026-05-27 11:12:28",
+          "legacyDueDate": null,
+          "importBatchId": "a02c7548-0f16-4ad6-a185-650393f72067",
+          "importedAt": "2026-07-17T14:01:41Z"
+        }
+      }
+    },
+    {
+      "legacyTodoId": "279",
+      "legacyRecordSha256": "ec1a807c76d7bce62a3cdd95cac801b206bec1cb74676920a50f63118d32f056",
+      "mappingDecision": "REONBOARD_AS_PERSONAL_QUICK_ITEM",
+      "targetCreatorPrincipalRef": "DOGFOOD_USER",
+      "idempotencyKey": "legacy-llm-todo:279",
+      "context": {
+        "title": "整合内容管线 — 把写文章/P做PPT/做视频等所有内容归到一个大目录下",
+        "description": "现在的状态是：写文章归写文章、做PPT归做PPT、做视频归做视频，数据分散在各处。需要找时间把所有内容管线整合到一起，统一目录结构、统一数据存放。",
+        "priority": "high",
+        "legacyProvenance": {
+          "source": "llm-todo",
+          "legacyTodoId": "279",
+          "legacyRecordSha256": "ec1a807c76d7bce62a3cdd95cac801b206bec1cb74676920a50f63118d32f056",
+          "sourceSnapshotSha256": "284fe44af048d7aa453dae4385fae6e25730f9ed97e92516d44b4bda60fbbf3f",
+          "legacyStatus": "pending",
+          "legacyCreatedAt": "2026-06-24 03:07:49",
+          "legacyDueDate": null,
+          "importBatchId": "a02c7548-0f16-4ad6-a185-650393f72067",
+          "importedAt": "2026-07-17T14:01:41Z"
+        }
+      }
+    }
+  ]
+}

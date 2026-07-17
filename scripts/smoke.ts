@@ -124,8 +124,8 @@ async function main() {
       assert(false, 'Instance detail is not full visibility');
       process.exit(1);
     }
-    const advanceTransition = detail.detail.outgoingTransitions.find(
-      (t) => t.transitionEffect === 'ADVANCE' && t.executableForActor === true,
+    const advanceTransition = detail.detail.outgoing_transitions.find(
+      (t) => t.transition_effect === 'ADVANCE' && t.executable_for_actor === true,
     );
     if (!advanceTransition) {
       assert(false, 'No executable ADVANCE transition found');
@@ -134,8 +134,8 @@ async function main() {
     await agentClient.transition(
       instanceId,
       {
-        transitionDefinitionId: advanceTransition.transitionId,
-        expectedWorkflowStateVersion: detail.detail.instance.workflowStateVersion,
+        transitionDefinitionId: advanceTransition.transition_id,
+        expectedWorkflowStateVersion: detail.detail.instance.workflow_state_version,
         submissionPayload: { summary: 'Smoke test proposal' },
       },
       { idempotencyKey: `smoke-advance-${Date.now()}` },
@@ -176,12 +176,12 @@ async function main() {
   try {
     const detail = await agentClient.detail(instanceId);
     if (detail.visibility === 'full') {
-      const efficiencyTransition = detail.detail.outgoingTransitions.find(
-        (t) => t.transitionEffect === 'ADVANCE',
+      const efficiencyTransition = detail.detail.outgoing_transitions.find(
+        (t) => t.transition_effect === 'ADVANCE',
       );
       if (efficiencyTransition) {
         assert(
-          !efficiencyTransition.executableForActor,
+          !efficiencyTransition.executable_for_actor,
           'Efficiency ADVANCE is not executable for Agent A',
         );
       } else {

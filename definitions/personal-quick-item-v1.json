@@ -1,0 +1,97 @@
+{
+  "definitionKey": "personal_quick_item_v1",
+  "displayName": "Personal Quick Item",
+  "description": "Minimal personal quick item: open → completed or cancelled. Creator owns the open node.",
+  "version": {
+    "versionNumber": 1,
+    "contextSchema": {
+      "type": "object",
+      "required": ["title"],
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "priority": {
+          "type": "string",
+          "enum": ["high", "medium", "low", null]
+        },
+        "legacyProvenance": {
+          "type": "object",
+          "required": ["source", "legacyTodoId", "legacyRecordSha256", "sourceSnapshotSha256", "importBatchId", "importedAt"],
+          "properties": {
+            "source": { "type": "string", "enum": ["llm-todo"] },
+            "legacyTodoId": { "type": "string" },
+            "legacyRecordSha256": { "type": "string" },
+            "sourceSnapshotSha256": { "type": "string" },
+            "legacyStatus": { "type": "string" },
+            "legacyCreatedAt": { "type": ["string", "null"] },
+            "legacyDueDate": { "type": ["string", "null"] },
+            "importBatchId": { "type": "string" },
+            "importedAt": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "domain": {
+    "domainId": "${DOMAIN_ID}",
+    "domainKey": "workflow-todo",
+    "displayName": "Workflow Todo"
+  },
+  "nodes": [
+    {
+      "nodeKey": "open",
+      "displayName": "Open",
+      "orderIndex": 0,
+      "nodeType": "DRAFT",
+      "assigneeRefType": "WORKFLOW_CREATOR",
+      "instructions": "This item is open and assigned to its creator",
+      "primaryAdvanceTransitionKey": "advance-to-completed"
+    },
+    {
+      "nodeKey": "completed",
+      "displayName": "Completed",
+      "orderIndex": 1,
+      "nodeType": "TERMINAL"
+    },
+    {
+      "nodeKey": "cancelled",
+      "displayName": "Cancelled",
+      "orderIndex": 2,
+      "nodeType": "TERMINAL"
+    }
+  ],
+  "transitions": [
+    {
+      "transitionKey": "advance-to-completed",
+      "displayName": "Mark as completed",
+      "sourceNodeKey": "open",
+      "targetNodeKey": "completed",
+      "transitionEffect": "ADVANCE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {
+          "summary": { "type": "string", "maxLength": 2000 }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "transitionKey": "cancel",
+      "displayName": "Cancel item",
+      "sourceNodeKey": "open",
+      "targetNodeKey": "cancelled",
+      "transitionEffect": "TERMINATE",
+      "submissionSchema": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string", "maxLength": 1000 }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}
