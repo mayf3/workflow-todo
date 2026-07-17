@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkflowClient, WorkflowError } from '../src/client.js';
 
 const INSTANCE_ID = '11111111-1111-4111-8111-111111111111';
@@ -133,8 +133,9 @@ describe('WorkflowClient', () => {
 
     // svc-workflow handles idempotency server-side; client just passes the key
     // Both calls should use the same idempotency key
-    const bodies = fetchMock.mock.calls.map(([_, init]) =>
-      JSON.parse(String((init as RequestInit).body)),
+    const calls = fetchMock.mock.calls as unknown as Array<[string | URL, RequestInit]>;
+    const bodies = calls.map(([, init]) =>
+      JSON.parse(String(init.body)),
     );
     expect(bodies[0]).toEqual(bodies[1]);
     expect(result1).toEqual(result2);

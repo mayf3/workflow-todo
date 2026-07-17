@@ -205,9 +205,9 @@ export class WorkflowClient {
         continue;
       }
 
-      if (envelope) {
+      if (envelope?.error) {
         throw new WorkflowError(
-          envelope.error.message,
+          envelope.error.message ?? 'unknown error',
           'api',
           operation,
           response.status,
