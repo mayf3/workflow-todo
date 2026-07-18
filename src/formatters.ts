@@ -194,14 +194,16 @@ export function formatAdvanceResult(
 // Domain list formatter
 // ---------------------------------------------------------------------------
 
+/** Format a UUID for display, showing the last 8 chars with an ellipsis prefix.
+ *  The leading segment is uniform for all principals in this domain; the
+ *  suffix varies and makes identities distinguishable. */
 function fmtId(uuid: string): string {
-  return uuid.length >= 8 ? uuid.slice(0, 8) : uuid;
+  return uuid.length >= 8 ? '…' + uuid.slice(-8) : uuid;
 }
 
 function fmtDisplayName(uuid: string | null): string {
   if (!uuid) return '-';
-  // Use last 8 chars for readability
-  return uuid.length >= 8 ? '…' + uuid.slice(uuid.length - 8) : uuid;
+  return uuid.length >= 8 ? '…' + uuid.slice(-8) : uuid;
 }
 
 export function formatDomainWorklist(items: DomainInstanceSummary[]): string {
