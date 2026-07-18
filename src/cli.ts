@@ -2,8 +2,8 @@
 
 import { env } from './config.js';
 import { WorkflowClient } from './client.js';
-import type { CreateWorkflowInstanceInput } from './contracts.js';
-import { formatWorklist, formatDetail, formatAdvanceResult, writeJson } from './formatters.js';
+import type { CreateWorkflowInstanceInput, DomainInstanceSummary } from './contracts.js';
+import { formatWorklist, formatDetail, formatAdvanceResult, formatDomainWorklist, writeJson } from './formatters.js';
 import { parseOutputMode } from './cli-args.js';
 import type { OutputMode } from './cli-args.js';
 
@@ -39,6 +39,11 @@ async function main() {
     case 'my-worklist': {
       const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
       await cmdWorklist(client, rest);
+      break;
+    }
+    case 'list': {
+      const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
+      await cmdList(client, rest);
       break;
     }
     case 'detail': {
@@ -138,6 +143,111 @@ async function cmdWorklist(client: WorkflowClient, args: string[]) {
   console.log(formatWorklist(page));
 }
 
+/// workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]
+async function cmdList(client: WorkflowClient, args: string[]) {
+  const { mode, cleanArgs } = resolveMode(args);
+
+  // Require --all flag
+  if (!cleanArgs.includes('--all')) {
+    console.error('Usage: workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]');
+    process.exit(1);
+  }
+
+  // Parse product-level filters and map to API parameters
+  const statusFlag = extractArg(cleanArgs, '--status') ?? 'active';
+  const assigneeId = extractArg(cleanArgs, '--assignee');
+  const defFlag = extractArg(cleanArgs, '--definition');
+
+  // Map product terminology to API lifecycle + nodeKey
+  let lifecycle: 'active' | 'terminal' | 'all';
+  let currentNodeKey: string | undefined;
+
+  switch (statusFlag) {
+    case 'active':
+      lifecycle = 'active';
+      break;
+    case 'completed':
+      lifecycle = 'terminal';
+      currentNodeKey = 'completed';
+      break;
+    case 'cancelled':
+      lifecycle = 'terminal';
+      currentNodeKey = 'cancelled';
+      break;
+    case 'all':
+      lifecycle = 'all';
+      break;
+    default:
+      console.error(`ERROR: Invalid --status '${statusFlag}'. Use: active, completed, cancelled, all`);
+      process.exit(1);
+  }
+
+  // Map definition flag to definitionKey
+  let definitionKey: string | undefined;
+  if (defFlag === 'quick') {
+    definitionKey = 'personal_quick_item_v1';
+  } else if (defFlag === 'agent') {
+    definitionKey = 'agent_self_task_v1';
+  } else if (defFlag !== undefined) {
+    console.error(`ERROR: Invalid --definition '${defFlag}'. Use: quick, agent`);
+    process.exit(1);
+  }
+
+  // Auto-paginate with fail-close semantics
+  const allItems: DomainInstanceSummary[] = [];
+  const seenInstanceIds = new Set<string>();
+  const seenCursors = new Set<string>();
+  let cursor: { createdAt: string; id: string } | undefined;
+  let pageNum = 0;
+
+  do {
+    pageNum++;
+    const page = await client.listDomainInstances({
+      domainId: env.DOMAIN_ID,
+      limit: 100,
+      lifecycle,
+      currentNodeKey,
+      definitionKey,
+      assigneePrincipalId: assigneeId,
+      beforeCreatedAt: cursor?.createdAt,
+      beforeId: cursor?.id,
+    });
+
+    // Fail on duplicate cursor (paginated API not advancing)
+    if (cursor) {
+      const cursorKey = `${cursor.createdAt}|${cursor.id}`;
+      if (seenCursors.has(cursorKey)) {
+        throw new Error(`PAGINATION_STALL: cursor ${cursorKey} was already returned`);
+      }
+      seenCursors.add(cursorKey);
+    }
+
+    // Fail on duplicate instance IDs across pages
+    for (const item of page.items) {
+      if (seenInstanceIds.has(item.workflow_instance_id)) {
+        throw new Error(`PAGINATION_DUPLICATE: instance ${item.workflow_instance_id} appeared on multiple pages`);
+      }
+      seenInstanceIds.add(item.workflow_instance_id);
+    }
+
+    allItems.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+
+  // Output
+  if (mode === 'json') {
+    writeJson({ total: allItems.length, items: allItems });
+    return;
+  }
+
+  if (allItems.length === 0) {
+    console.log('No instances found.');
+    return;
+  }
+
+  console.log(formatDomainWorklist(allItems));
+}
+
 async function cmdDetail(client: WorkflowClient, args: string[]) {
   const { mode, cleanArgs } = resolveMode(args);
   const instanceId = extractArg(cleanArgs, '--instance-id');
@@ -212,6 +322,7 @@ Usage:
       → Deprecated: defaults to agent_self_task_v1 (same as create-agent)
 
   workflow-todo my-worklist [--json]
+  workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]
   workflow-todo detail --instance-id <uuid> [--json]
   workflow-todo advance --instance-id <uuid> --summary <text> [--json]
 `);
