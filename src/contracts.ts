@@ -2,7 +2,7 @@
 // svc-workflow API contracts
 // ---------------------------------------------------------------------------
 
-export type WorkflowOperation = 'preflight' | 'create' | 'detail' | 'transition' | 'timeline' | 'worklist';
+export type WorkflowOperation = 'create' | 'detail' | 'transition' | 'timeline' | 'worklist';
 
 export type AccessTokenProvider = () => string | Promise<string>;
 
