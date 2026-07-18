@@ -60,6 +60,20 @@ async function main() {
     case 'legacy-manifest-generate':
       await cmdLegacyManifestGenerate(rest);
       break;
+    case 'full-migration': {
+      const { cmdGeneratePlan, cmdRun, cmdVerify } = await import('./full-migration-cli.js');
+      const sub = rest[0];
+      const subArgs = rest.slice(1);
+      switch (sub) {
+        case 'generate-plan': await cmdGeneratePlan(); break;
+        case 'run': await cmdRun(subArgs); break;
+        case 'verify': await cmdVerify(); break;
+        default:
+          console.error('Usage: workflow-todo full-migration {generate-plan|run|verify}');
+          process.exit(1);
+      }
+      break;
+    }
     default:
       console.error(`Unknown command: ${command}`);
       showUsage();
@@ -368,6 +382,9 @@ Usage:
   workflow-todo advance --instance-id <uuid> --summary <text> [--json]
   workflow-todo legacy-import --manifest <path> --apply-canary
   workflow-todo legacy-manifest-generate --source <remote-json> --ids <id1,id2,...> --output <path>
+  workflow-todo full-migration generate-plan
+  workflow-todo full-migration run [--dry-run]
+  workflow-todo full-migration verify
 `);
 }
 

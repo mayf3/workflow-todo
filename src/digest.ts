@@ -24,7 +24,7 @@ import { createHash } from 'crypto';
  * - Numbers: no leading zeros, no trailing dot, no exponent padding
  * - null, true, false as their JSON literals
  */
-function jcsCanonicalize(obj: unknown): string {
+export function jcsCanonicalize(obj: unknown): string {
   if (obj === null) return 'null';
   if (typeof obj === 'boolean') return obj ? 'true' : 'false';
   if (typeof obj === 'number') {
