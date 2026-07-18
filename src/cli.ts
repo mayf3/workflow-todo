@@ -2,23 +2,8 @@
 
 import { env } from './config.js';
 import { WorkflowClient } from './client.js';
-import {
-  validateManifest,
-  importManifest,
-  scanForSecrets,
-  validateSourceDigest,
-  validateTokenSubject,
-  validateDefinitionVersion,
-  ManifestValidationError,
-  SourceDigestMismatchError,
-  TokenSubjectMismatchError,
-  DefinitionValidationError,
-} from './legacy-import.js';
-import { sha256Jcs } from './digest.js';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
-import { randomUUID } from 'crypto';
-import { formatWorklist, formatDetail, formatAdvanceResult, writeJson } from './formatters.js';
+import type { CreateWorkflowInstanceInput, DomainInstanceSummary } from './contracts.js';
+import { formatWorklist, formatDetail, formatAdvanceResult, formatDomainWorklist, writeJson } from './formatters.js';
 import { parseOutputMode } from './cli-args.js';
 import type { OutputMode } from './cli-args.js';
 
@@ -34,6 +19,18 @@ async function main() {
   const rest = args.slice(1);
 
   switch (command) {
+    case 'create-quick': {
+      // 普通 Todo → personal_quick_item_v1
+      const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
+      await cmdCreateWithDef(client, rest, env.PERSONAL_QUICK_ITEM_DEFINITION_VERSION_ID, 'quick');
+      break;
+    }
+    case 'create-agent': {
+      // 正式 Agent 工作 → agent_self_task_v1
+      const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
+      await cmdCreateWithDef(client, rest, env.AGENT_SELF_TASK_DEFINITION_VERSION_ID, 'agent');
+      break;
+    }
     case 'create': {
       const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
       await cmdCreate(client, rest);
@@ -44,6 +41,11 @@ async function main() {
       await cmdWorklist(client, rest);
       break;
     }
+    case 'list': {
+      const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
+      await cmdList(client, rest);
+      break;
+    }
     case 'detail': {
       const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
       await cmdDetail(client, rest);
@@ -52,26 +54,6 @@ async function main() {
     case 'advance': {
       const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
       await cmdAdvance(client, rest);
-      break;
-    }
-    case 'legacy-import':
-      await cmdLegacyImport(rest);
-      break;
-    case 'legacy-manifest-generate':
-      await cmdLegacyManifestGenerate(rest);
-      break;
-    case 'full-migration': {
-      const { cmdGeneratePlan, cmdRun, cmdVerify } = await import('./full-migration-cli.js');
-      const sub = rest[0];
-      const subArgs = rest.slice(1);
-      switch (sub) {
-        case 'generate-plan': await cmdGeneratePlan(); break;
-        case 'run': await cmdRun(subArgs); break;
-        case 'verify': await cmdVerify(); break;
-        default:
-          console.error('Usage: workflow-todo full-migration {generate-plan|run|verify}');
-          process.exit(1);
-      }
       break;
     }
     default:
@@ -108,23 +90,44 @@ function resolveMode(args: string[]): { mode: OutputMode; cleanArgs: string[] } 
 // ---------------------------------------------------------------------------
 
 async function cmdCreate(client: WorkflowClient, args: string[]) {
+  // Default create uses AGENT_SELF_TASK_DEFINITION_VERSION_ID for backward compatibility
+  await cmdCreateWithDef(client, args, env.DEFINITION_VERSION_ID, 'default');
+}
+
+async function cmdCreateWithDef(client: WorkflowClient, args: string[], defVersionId: string, label: string) {
   const { mode, cleanArgs } = resolveMode(args);
   const title = extractArg(cleanArgs, '--title');
   const description = extractArg(cleanArgs, '--description');
   const acceptanceCriteria = extractArg(cleanArgs, '--acceptance-criteria');
 
-  if (!title || !description || !acceptanceCriteria) {
-    console.error('Usage: workflow-todo create --title <title> --description <desc> --acceptance-criteria <criteria> [--json]');
+  if (!title) {
+    console.error(`Usage: workflow-todo ${label === 'quick' ? 'create-quick' : 'create-agent'} --title <title> [--description <desc> --acceptance-criteria <criteria>] [--json]`);
     process.exit(1);
   }
 
+  // Build context payload matching the target definition's schema.
+  // personal_quick_item_v1: accepts { title, description, priority }
+  // agent_self_task_v1:     requires { title, description, acceptanceCriteria }
+  const isQuick = label === 'quick';
+  const payload: Record<string, string> = { title };
+  if (description) payload.description = description;
+  if (!isQuick && acceptanceCriteria) payload.acceptanceCriteria = acceptanceCriteria;
+
+  const input: CreateWorkflowInstanceInput = {
+    domainId: env.DOMAIN_ID,
+    definitionVersionId: defVersionId,
+    metadata: {},
+    contextPayload: payload,
+  };
+
   const result = await client.create(
-    { domainId: env.DOMAIN_ID, definitionVersionId: env.DEFINITION_VERSION_ID, metadata: {}, contextPayload: { title, description, acceptanceCriteria } },
-    { idempotencyKey: `create-${Date.now()}-${randomSuffix()}` },
+    input,
+    { idempotencyKey: `create-${label}-${Date.now()}-${randomSuffix()}` },
   );
 
   if (mode === 'json') { writeJson(result); return; }
   console.log(`Instance created: ${result.workflowInstanceId}`);
+  console.log(`Definition: ${label}`);
   console.log(`State version: ${result.workflowStateVersion}`);
 }
 
@@ -138,6 +141,111 @@ async function cmdWorklist(client: WorkflowClient, args: string[]) {
     return;
   }
   console.log(formatWorklist(page));
+}
+
+/// workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]
+async function cmdList(client: WorkflowClient, args: string[]) {
+  const { mode, cleanArgs } = resolveMode(args);
+
+  // Require --all flag
+  if (!cleanArgs.includes('--all')) {
+    console.error('Usage: workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]');
+    process.exit(1);
+  }
+
+  // Parse product-level filters and map to API parameters
+  const statusFlag = extractArg(cleanArgs, '--status') ?? 'active';
+  const assigneeId = extractArg(cleanArgs, '--assignee');
+  const defFlag = extractArg(cleanArgs, '--definition');
+
+  // Map product terminology to API lifecycle + nodeKey
+  let lifecycle: 'active' | 'terminal' | 'all';
+  let currentNodeKey: string | undefined;
+
+  switch (statusFlag) {
+    case 'active':
+      lifecycle = 'active';
+      break;
+    case 'completed':
+      lifecycle = 'terminal';
+      currentNodeKey = 'completed';
+      break;
+    case 'cancelled':
+      lifecycle = 'terminal';
+      currentNodeKey = 'cancelled';
+      break;
+    case 'all':
+      lifecycle = 'all';
+      break;
+    default:
+      console.error(`ERROR: Invalid --status '${statusFlag}'. Use: active, completed, cancelled, all`);
+      process.exit(1);
+  }
+
+  // Map definition flag to definitionKey
+  let definitionKey: string | undefined;
+  if (defFlag === 'quick') {
+    definitionKey = 'personal_quick_item_v1';
+  } else if (defFlag === 'agent') {
+    definitionKey = 'agent_self_task_v1';
+  } else if (defFlag !== undefined) {
+    console.error(`ERROR: Invalid --definition '${defFlag}'. Use: quick, agent`);
+    process.exit(1);
+  }
+
+  // Auto-paginate with fail-close semantics
+  const allItems: DomainInstanceSummary[] = [];
+  const seenInstanceIds = new Set<string>();
+  const seenCursors = new Set<string>();
+  let cursor: { createdAt: string; id: string } | undefined;
+  let pageNum = 0;
+
+  do {
+    pageNum++;
+    const page = await client.listDomainInstances({
+      domainId: env.DOMAIN_ID,
+      limit: 100,
+      lifecycle,
+      currentNodeKey,
+      definitionKey,
+      assigneePrincipalId: assigneeId,
+      beforeCreatedAt: cursor?.createdAt,
+      beforeId: cursor?.id,
+    });
+
+    // Fail on duplicate cursor (paginated API not advancing)
+    if (cursor) {
+      const cursorKey = `${cursor.createdAt}|${cursor.id}`;
+      if (seenCursors.has(cursorKey)) {
+        throw new Error(`PAGINATION_STALL: cursor ${cursorKey} was already returned`);
+      }
+      seenCursors.add(cursorKey);
+    }
+
+    // Fail on duplicate instance IDs across pages
+    for (const item of page.items) {
+      if (seenInstanceIds.has(item.workflow_instance_id)) {
+        throw new Error(`PAGINATION_DUPLICATE: instance ${item.workflow_instance_id} appeared on multiple pages`);
+      }
+      seenInstanceIds.add(item.workflow_instance_id);
+    }
+
+    allItems.push(...page.items);
+    cursor = page.nextCursor ?? undefined;
+  } while (cursor);
+
+  // Output
+  if (mode === 'json') {
+    writeJson({ total: allItems.length, items: allItems });
+    return;
+  }
+
+  if (allItems.length === 0) {
+    console.log('No instances found.');
+    return;
+  }
+
+  console.log(formatDomainWorklist(allItems));
 }
 
 async function cmdDetail(client: WorkflowClient, args: string[]) {
@@ -198,193 +306,25 @@ async function cmdAdvance(client: WorkflowClient, args: string[]) {
 }
 
 // ---------------------------------------------------------------------------
-// legacy-manifest-generate
-// ---------------------------------------------------------------------------
-
-const ALLOWED_MANIFEST_IDS = ['238', '256', '279'];
-
-async function cmdLegacyManifestGenerate(args: string[]) {
-  const sourcePath = extractArg(args, '--source');
-  const idsArg = extractArg(args, '--ids');
-  const outputPath = extractArg(args, '--output');
-
-  if (!sourcePath || !idsArg || !outputPath) {
-    console.error('Usage: workflow-todo legacy-manifest-generate --source <remote-json-path> --ids <id1,id2,...> --output <manifest-path>');
-    process.exit(1);
-  }
-
-  const ids = idsArg.split(',').map((s) => s.trim()).filter(Boolean);
-  for (const id of ids) {
-    if (!ALLOWED_MANIFEST_IDS.includes(id)) {
-      console.error(`ID ${id} is not in the allowed set: ${ALLOWED_MANIFEST_IDS.join(', ')}`);
-      process.exit(1);
-    }
-  }
-
-  if (!existsSync(sourcePath)) {
-    console.error(`Source file not found: ${sourcePath}`);
-    process.exit(1);
-  }
-  const sourceBuffer = readFileSync(sourcePath);
-  const sourceContent = sourceBuffer.toString('utf-8');
-
-  let rawEnvelope: Record<string, unknown>;
-  try { rawEnvelope = JSON.parse(sourceContent); }
-  catch { console.error('Source file is not valid JSON'); process.exit(1); }
-
-  const todos = rawEnvelope.todos;
-  if (!Array.isArray(todos)) {
-    console.error('Source JSON has no "todos" array');
-    process.exit(1);
-  }
-
-  const { createHash } = await import('crypto');
-  const hash = createHash('sha256');
-  hash.update(sourceBuffer);
-  const sourceSnapshotSha256 = hash.digest('hex');
-
-  const batchId = randomUUID();
-  const importedAt = '2026-07-17T14:01:41Z';
-  const items: Array<Record<string, unknown>> = [];
-  const seenIds = new Set<string>();
-
-  for (const todo of todos) {
-    const todoObj = todo as Record<string, unknown>;
-    const id = String(todoObj.id);
-    if (!ids.includes(id)) continue;
-    if (seenIds.has(id)) { console.error(`Duplicate ID ${id}`); process.exit(1); }
-    seenIds.add(id);
-    if (todoObj.status !== 'pending') { console.error(`ID ${id}: status must be pending`); process.exit(1); }
-    if (todoObj.type !== 'personal') { console.error(`ID ${id}: type must be personal`); process.exit(1); }
-
-    const legacyRecordSha256 = sha256Jcs(todo);
-    items.push({
-      legacyTodoId: id, legacyRecordSha256,
-      mappingDecision: 'REONBOARD_AS_PERSONAL_QUICK_ITEM',
-      targetCreatorPrincipalRef: 'DOGFOOD_USER',
-      idempotencyKey: `legacy-llm-todo:${id}`,
-      context: {
-        title: todoObj.title, description: todoObj.description ?? null, priority: todoObj.priority ?? null,
-        legacyProvenance: {
-          source: 'llm-todo', legacyTodoId: id, legacyRecordSha256,
-          sourceSnapshotSha256, legacyStatus: todoObj.status ?? null,
-          legacyCreatedAt: todoObj.created_at ?? null, legacyDueDate: todoObj.due_date ?? null,
-          importBatchId: batchId, importedAt,
-        },
-      },
-    });
-  }
-
-  for (const id of ids) {
-    if (!seenIds.has(id)) { console.error(`ID ${id} not found`); process.exit(1); }
-  }
-
-  const manifest = {
-    schemaVersion: 'personal-quick-item-canary-v1',
-    recordDigestAlgorithm: 'sha256-rfc8785-jcs-full-record-v1',
-    sourceDigestAlgorithm: 'sha256-file-bytes-v1',
-    batchId, sourceSnapshotSha256,
-    targetDefinitionKey: 'personal_quick_item_v1', targetDefinitionVersion: 1,
-    items,
-  };
-
-  const manifestJson = JSON.stringify(manifest, null, 2) + '\n';
-  writeFileSync(outputPath, manifestJson, 'utf-8');
-  console.error(`Manifest written to ${outputPath}`);
-  console.error(`  items: ${items.length}, batch: ${batchId}, source: ${sourceSnapshotSha256.slice(0, 12)}…`);
-  process.stdout.write(manifestJson);
-}
-
-// ---------------------------------------------------------------------------
-// legacy-import
-// ---------------------------------------------------------------------------
-
-async function cmdLegacyImport(args: string[]) {
-  const manifestPath = extractArg(args, '--manifest');
-  const applyCanary = args.includes('--apply-canary');
-
-  if (!manifestPath || !applyCanary) {
-    console.error('Usage: workflow-todo legacy-import --manifest <path> --apply-canary');
-    process.exit(1);
-  }
-
-  let manifestData: unknown;
-  try { const content = readFileSync(manifestPath, 'utf-8'); manifestData = JSON.parse(content); }
-  catch (error) { console.error(`Failed to read manifest: ${error instanceof Error ? error.message : error}`); process.exit(1); }
-
-  const warnings = scanForSecrets(manifestPath);
-  if (warnings.length > 0) { warnings.forEach((w) => console.error(`SECURITY: ${w}`)); console.error('Aborting'); process.exit(1); }
-
-  let manifest;
-  try { manifest = validateManifest(manifestData); }
-  catch (error) {
-    if (error instanceof ManifestValidationError) { console.error(`Manifest validation failed: ${error.message}`); process.exit(1); }
-    throw error;
-  }
-  console.error(`Manifest validated: ${manifest.items.length} item(s)`);
-
-  const accessToken = env.LEGACY_IMPORT_ACCESS_TOKEN;
-  if (!accessToken) { console.error('LEGACY_IMPORT_ACCESS_TOKEN is required'); process.exit(1); }
-
-  const expectedPrincipalId = env.LEGACY_IMPORT_EXPECTED_PRINCIPAL_ID;
-  if (!expectedPrincipalId) { console.error('LEGACY_IMPORT_EXPECTED_PRINCIPAL_ID is required'); process.exit(1); }
-  try { validateTokenSubject(accessToken, expectedPrincipalId); console.error(`Token subject validated: ${expectedPrincipalId}`); }
-  catch (error) {
-    if (error instanceof TokenSubjectMismatchError) { console.error(error.message); process.exit(1); }
-    throw error;
-  }
-
-  try {
-    const manifestDir = resolve(manifestPath, '..');
-    const sourcePath = resolve(manifestDir, '..', 'private', 'remote-todos-raw.json');
-    if (!existsSync(sourcePath)) { console.error(`Source file not found at ${sourcePath}`); process.exit(1); }
-    validateSourceDigest(sourcePath, manifest.sourceSnapshotSha256);
-    console.error('Source snapshot digest verified');
-  } catch (error) {
-    if (error instanceof SourceDigestMismatchError) { console.error(error.message); process.exit(1); }
-    throw error;
-  }
-
-  const defVersionId = env.PERSONAL_QUICK_ITEM_DEFINITION_VERSION_ID;
-  if (!defVersionId) { console.error('PERSONAL_QUICK_ITEM_DEFINITION_VERSION_ID is required'); process.exit(1); }
-  try {
-    const defInfo = await validateDefinitionVersion(env.SVC_WORKFLOW_BASE_URL, accessToken, defVersionId);
-    console.error(`Definition validated: ${defInfo.definitionKey} v${defInfo.versionNumber} (${defInfo.versionStatus})`);
-  } catch (error) {
-    if (error instanceof DefinitionValidationError) { console.error(`Definition validation failed: ${error.message}`); process.exit(1); }
-    throw error;
-  }
-
-  console.error('Starting import...');
-  const results = await importManifest(manifest, {
-    domainId: env.DOMAIN_ID, definitionVersionId: defVersionId, accessToken, baseUrl: env.SVC_WORKFLOW_BASE_URL,
-  });
-
-  const succeeded = results.filter((r) => r.status === 'succeeded');
-  const errors = results.filter((r) => r.status === 'error');
-  console.error(`Import complete: ${succeeded.length} succeeded, ${errors.length} errors`);
-  if (errors.length > 0) { errors.forEach((e) => console.error(`  Item ${e.legacyTodoId}: ${e.error}`)); }
-
-  process.stdout.write(JSON.stringify(results, null, 2) + '\n');
-  if (errors.length > 0) process.exit(1);
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function showUsage() {
   console.log(`
 Usage:
-  workflow-todo create --title <title> --description <desc> --acceptance-criteria <criteria>
+  workflow-todo create-quick --title <title> [--description <desc> --acceptance-criteria <criteria>]
+      → 普通 Todo (personal_quick_item_v1)
+
+  workflow-todo create-agent --title <title> [--description <desc> --acceptance-criteria <criteria>]
+      → 正式 Agent 工作 (agent_self_task_v1)
+
+  workflow-todo create --title <title> [--description <desc> --acceptance-criteria <criteria>]
+      → Deprecated: defaults to agent_self_task_v1 (same as create-agent)
+
   workflow-todo my-worklist [--json]
+  workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]
   workflow-todo detail --instance-id <uuid> [--json]
   workflow-todo advance --instance-id <uuid> --summary <text> [--json]
-  workflow-todo legacy-import --manifest <path> --apply-canary
-  workflow-todo legacy-manifest-generate --source <remote-json> --ids <id1,id2,...> --output <path>
-  workflow-todo full-migration generate-plan
-  workflow-todo full-migration run [--dry-run]
-  workflow-todo full-migration verify
 `);
 }
 

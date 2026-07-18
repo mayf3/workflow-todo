@@ -154,7 +154,7 @@ describe('command-specific arg scenarios', () => {
     expect(result.remainingArgs).toEqual(['--instance-id', 'abc', '--summary', 'done']);
   });
 
-  it('legacy-import unrelated flags remain', () => {
+  it('unrelated custom flags remain', () => {
     const result = parseOutputMode(['--manifest', 'path.json', '--apply-canary']);
     // These are not mode flags, they stay
     expect(result.remainingArgs).toEqual(['--manifest', 'path.json', '--apply-canary']);
