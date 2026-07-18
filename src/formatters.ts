@@ -10,6 +10,7 @@
  */
 
 import type {
+  DomainInstanceSummary,
   WorklistPage,
   WorkflowInstanceDetail,
   ExecuteWorkflowTransitionResult,
@@ -187,6 +188,60 @@ export function formatAdvanceResult(
   lines.push(`State version: ${result.workflowStateVersion}`);
   lines.push(`Event sequence: ${result.eventSequence}`);
   return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Domain list formatter
+// ---------------------------------------------------------------------------
+
+function fmtId(uuid: string): string {
+  return uuid.length >= 8 ? uuid.slice(0, 8) : uuid;
+}
+
+function fmtDisplayName(uuid: string | null): string {
+  if (!uuid) return '-';
+  // Use last 8 chars for readability
+  return uuid.length >= 8 ? '…' + uuid.slice(uuid.length - 8) : uuid;
+}
+
+export function formatDomainWorklist(items: DomainInstanceSummary[]): string {
+  if (items.length === 0) {
+    return 'No instances found.';
+  }
+
+  const header = `${'='.repeat(60)}
+  Domain Instances (${items.length} total)
+${'='.repeat(60)}
+`;
+
+  const lines: string[] = [header];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const raw = item as unknown as Record<string, unknown>;
+
+    const title = item.title ?? '(no title)';
+    const defKey = item.definition_key;
+    // API returns snake_case; access via raw cast
+    const nodeRaw = item.current_node as unknown as Record<string, unknown>;
+    const nodeKey = str(nodeRaw, 'node_key', '?');
+    const nodeType = str(nodeRaw, 'node_type', '?');
+    const creator = fmtId(item.created_by_principal_id);
+    const assignee = item.current_assignee_principal_id
+      ? fmtId(item.current_assignee_principal_id)
+      : '-';
+    const created = formatTimestamp(item.created_at);
+    const updated = formatTimestamp(item.updated_at);
+    const instanceId = fmtId(item.workflow_instance_id);
+
+    lines.push(`[${i + 1}] ${title}`);
+    lines.push(`    Instance: ${instanceId}  Definition: ${defKey}`);
+    lines.push(`    Node: ${nodeKey} (${nodeType})  Creator: ${creator}`);
+    lines.push(`    Assignee: ${assignee}  Created: ${created}  Updated: ${updated}`);
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
 }
 
 // ---------------------------------------------------------------------------
