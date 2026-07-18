@@ -1,6 +1,8 @@
 import type {
   CreateWorkflowInstanceInput,
   CreateWorkflowInstanceResult,
+  DomainInstancePage,
+  DomainInstanceQuery,
   ExecuteWorkflowTransitionInput,
   ExecuteWorkflowTransitionResult,
   WorkflowClientConfig,
@@ -132,6 +134,28 @@ export class WorkflowClient {
       method: 'GET',
       path: `/internal/v1/worklists/assigned-to-me${suffix}`,
       parseSuccess: (data) => data as WorklistPage,
+    });
+  }
+
+  /// GET /internal/v1/workflow-instances/domain
+  ///
+  /// Returns all instances in a domain (requires DOMAIN_OWNER role).
+  async listDomainInstances(
+    query: DomainInstanceQuery,
+  ): Promise<DomainInstancePage> {
+    const params = new URLSearchParams();
+    params.set('domainId', query.domainId);
+    if (query.beforeCreatedAt) params.set('beforeCreatedAt', query.beforeCreatedAt);
+    if (query.beforeId) params.set('beforeId', query.beforeId);
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.definitionKey) params.set('definitionKey', query.definitionKey);
+    if (query.lifecycle) params.set('lifecycle', query.lifecycle);
+    if (query.currentNodeKey) params.set('currentNodeKey', query.currentNodeKey);
+    if (query.assigneePrincipalId) params.set('assigneePrincipalId', query.assigneePrincipalId);
+    return this.request({
+      method: 'GET',
+      path: `/internal/v1/workflow-instances/domain?${params.toString()}`,
+      parseSuccess: (data) => data as DomainInstancePage,
     });
   }
 

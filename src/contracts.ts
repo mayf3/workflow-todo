@@ -188,3 +188,39 @@ export interface WorkflowEventItem {
 }
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+// ---------------------------------------------------------------------------
+// Domain-wide instance list (Efficiency Manager global view)
+// ---------------------------------------------------------------------------
+
+export interface DomainInstanceSummary {
+  workflow_instance_id: string;
+  domain_id: string;
+  definition_version_id: string;
+  definition_key: string;
+  created_by_principal_id: string;
+  current_assignee_principal_id: string | null;
+  current_node: PublicNodeSummary;
+  is_terminal: boolean;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DomainInstancePage {
+  items: DomainInstanceSummary[];
+  nextCursor: { createdAt: string; id: string } | null;
+}
+
+export type LifecycleFilter = 'active' | 'terminal' | 'all';
+
+export interface DomainInstanceQuery {
+  domainId: string;
+  beforeCreatedAt?: string;
+  beforeId?: string;
+  limit?: number;
+  definitionKey?: string;
+  lifecycle?: LifecycleFilter;
+  currentNodeKey?: string;
+  assigneePrincipalId?: string;
+}
