@@ -1,0 +1,32 @@
+{
+  "schema": "full-migration-preflight-receipt-v1",
+  "candidateCommitSha": "514fe6d9b62725b34a4ce898e720804f8d045072",
+  "candidateTreeSha": "2a0725d3352decc01449ae65a51108b567ac4c13",
+  "planDigest": "03f0e2eff88b9f1dadc5760d78f9ad5cab87e0d186a61f47c464c14f1a9fe072",
+  "sourceSnapshotSha256": "1000e99e9a907ecef518d6029f0a0f83146811f2287fa212bbd912c1932e7882",
+  "legacyDigestAlgorithm": "python-json-canonical-ensure-ascii-v1",
+  "definitionVersionId": "cd85f483-232c-4bf5-af03-2a6a73d80521",
+  "definitionKey": "personal_quick_item_v1",
+  "definitionVersion": 1,
+  "metadataContractVersion": "legacy-llm-todo-metadata-v1",
+  "metadataFields": [
+    "legacyImport",
+    "legacySource",
+    "legacyTodoId",
+    "legacyRecordSha256",
+    "sourceSnapshotSha256",
+    "legacyStatus",
+    "legacySubStatus",
+    "legacyAssignee",
+    "legacyCreatedAt",
+    "legacyDueDate",
+    "migrationDestination",
+    "migrationNeedsTriage",
+    "migrationReason",
+    "importBatchId",
+    "historicalImport"
+  ],
+  "completedAt": "2026-07-18T04:09:29.246Z",
+  "result": "PASS",
+  "hmac": "28390f36cb72adf31dffaef2ab8ec550e8e3261812a7f69f4057ba716c28ea56"
+}
