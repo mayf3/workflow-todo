@@ -11,10 +11,10 @@
 
 import type {
   DomainInstanceSummary,
-  WorklistPage,
   WorkflowInstanceDetail,
   ExecuteWorkflowTransitionResult,
 } from './contracts.js';
+import type { TodoWorklistPageView } from './todo-view-models.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,11 +57,10 @@ function val(obj: unknown, key: string): unknown {
 // Worklist formatter
 // ---------------------------------------------------------------------------
 
-export function formatWorklist(page: WorklistPage): string {
-  const raw = page as unknown as Record<string, unknown>;
-  const items = raw.items as Array<Record<string, unknown>> | undefined;
+export function formatWorklist(page: TodoWorklistPageView): string {
+  const items = page.items;
 
-  if (!items || items.length === 0) {
+  if (items.length === 0) {
     return 'No work items assigned to this principal.';
   }
 
@@ -69,29 +68,12 @@ export function formatWorklist(page: WorklistPage): string {
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const detail = item.detail as Record<string, unknown> | undefined;
-    if (!detail) continue;
 
-    const inst = detail.instance as Record<string, unknown> | undefined;
-    if (!inst) continue;
-
-    // Read context payload (snake_case from API)
-    const currentCtx = detail.current_context as Record<string, unknown> | undefined;
-    const ctxPayload = currentCtx?.payload as Record<string, unknown> | undefined;
-
-    const title = str(ctxPayload, 'title', '(no title)');
-    const priority = str(ctxPayload, 'priority');
-    const node = inst.current_node as Record<string, unknown> | undefined;
-    const nodeName = str(node, 'display_name', '?');
-    const defVerId = str(inst, 'definition_version_id');
-    const defKey = defVerId.slice(0, 8) + '…';
-    const createdAt = str(inst, 'created_at', '');
-
-    lines.push(`[${i + 1}] ${title}`);
-    lines.push(`    Node: ${nodeName}`);
-    lines.push(`    Instance: ${str(inst, 'workflow_instance_id')}`);
-    if (priority) lines.push(`    Priority: ${priority}`);
-    lines.push(`    Created: ${formatTimestamp(createdAt)}`);
+    lines.push(`[${i + 1}] ${item.title}`);
+    lines.push(`    Node: ${item.currentNodeDisplayName}`);
+    lines.push(`    Instance: ${item.workflowInstanceId}`);
+    if (item.priority) lines.push(`    Priority: ${item.priority}`);
+    lines.push(`    Created: ${formatTimestamp(item.createdAt)}`);
     lines.push('');
   }
 
