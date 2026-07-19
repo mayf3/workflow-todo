@@ -6,10 +6,10 @@ import {
   writeJson,
 } from '../src/formatters.js';
 import type {
-  WorklistPage,
   WorkflowInstanceDetail,
   ExecuteWorkflowTransitionResult,
 } from '../src/contracts.js';
+import type { TodoWorklistPageView } from '../src/todo-view-models.js';
 
 // ---------------------------------------------------------------------------
 // Helpers — build raw API-shaped objects (snake_case)
@@ -27,66 +27,21 @@ function makeWorklist(
     description?: string;
     priority?: string | null;
   } = {},
-): WorklistPage {
+): TodoWorklistPageView {
   const entries = [];
   for (let i = 0; i < items; i++) {
     entries.push({
-      detail: {
-        instance: {
-          workflow_instance_id: overrides.instanceId ?? `11111111-1111-4111-8111-${String(i + 1).padStart(12, '0')}`,
-          domain_id: 'd',
-          definition_version_id: overrides.defVersionId ?? '9b07afc4-d3a2-456d-8b96-13fdffbaf995',
-          definition_version_status: 'PUBLISHED',
-          created_by_principal_id: 'p',
-          workflow_state_version: 1,
-          external_reference: null,
-          external_url: null,
-          metadata: null,
-          created_at: overrides.createdAt ?? '2026-07-17T14:20:00Z',
-          domain_enabled: true,
-          is_terminal: false,
-          current_node: {
-            node_id: 'n1',
-            node_key: overrides.nodeKey ?? 'propose',
-            display_name: overrides.nodeDisplay ?? 'Propose',
-            node_type: 'DRAFT',
-          },
-        },
-        current_context_revision_id: 'ctx1',
-        current_node_visit_id: 'v1',
-        current_context: {
-          context_revision_id: 'ctx1',
-          workflow_instance_id: 'w1',
-          revision_number: 1,
-          previous_revision_id: null,
-          payload: {
-            title: overrides.title ?? `Test Item ${i + 1}`,
-            description: overrides.description ?? `Description for item ${i + 1}`,
-            priority: overrides.priority ?? null,
-          },
-          payload_digest: 'd1',
-          created_by_principal_id: 'p',
-          created_at: '2026-07-17T14:20:00Z',
-        },
-        current_visit: {
-          node_visit_id: 'v1',
-          workflow_instance_id: 'w1',
-          node: { node_id: 'n1', node_key: 'propose', display_name: 'Propose', node_type: 'DRAFT' },
-          visit_number: 1,
-          assignee_principal_id: 'p',
-          entered_by_transition_id: null,
-          instructions: null,
-          created_at: '2026-07-17T14:20:00Z',
-        },
-        outgoing_transitions: [],
-      },
-      upstream_submissions: [],
-      return_feedback_events: [],
-      submissions_truncated: false,
-      return_events_truncated: false,
+      workflowInstanceId: overrides.instanceId ?? `11111111-1111-4111-8111-${String(i + 1).padStart(12, '0')}`,
+      definitionVersionId: overrides.defVersionId ?? '9b07afc4-d3a2-456d-8b96-13fdffbaf995',
+      definitionKey: (overrides.defVersionId ?? '9b07afc4-d3a2-456d-8b96-13fdffbaf995').slice(0, 8) + '…',
+      createdAt: overrides.createdAt ?? '2026-07-17T14:20:00Z',
+      currentNodeKey: overrides.nodeKey ?? 'propose',
+      currentNodeDisplayName: overrides.nodeDisplay ?? 'Propose',
+      title: overrides.title ?? `Test Item ${i + 1}`,
+      priority: overrides.priority ?? null,
     });
   }
-  return { items: entries, next_cursor: null } as unknown as WorklistPage;
+  return { items: entries, nextCursor: null };
 }
 
 function makeDetailFull(
@@ -355,12 +310,12 @@ describe('writeJson', () => {
   });
 
   it('produces parseable JSON for worklist data', () => {
-    const page = makeWorklist(2);
+    const view = makeWorklist(2);
     const chunks: string[] = [];
     const orig = process.stdout.write.bind(process.stdout);
     process.stdout.write = ((chunk: unknown) => { chunks.push(String(chunk)); return true; }) as typeof process.stdout.write;
     try {
-      writeJson(page);
+      writeJson(view);
     } finally {
       process.stdout.write = orig;
     }
