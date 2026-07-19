@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
-import { env } from './config.js';
+import { env, validateReadPath } from './config.js';
 import { WorkflowClient } from './client.js';
+import { WorkflowClient as SDKWorkflowClient } from '@workflow-foundation/sdk';
+import { AuthServiceMachineTokenProvider } from './auth-token-provider.js';
+import { sdkWorklistPageToView } from './sdk-read-adapter.js';
 import type { CreateWorkflowInstanceInput, DomainInstanceSummary } from './contracts.js';
 import { formatWorklist, formatDetail, formatAdvanceResult, formatDomainWorklist, writeJson } from './formatters.js';
 import { parseOutputMode } from './cli-args.js';
@@ -37,8 +40,13 @@ async function main() {
       break;
     }
     case 'my-worklist': {
-      const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
-      await cmdWorklist(client, rest);
+      const readPath = validateReadPath(env.WORKFLOW_TODO_READ_PATH);
+      if (readPath === 'sdk_auth_v1') {
+        await cmdWorklistSdk(rest);
+      } else {
+        const client = makeClient(env.SVC_WORKFLOW_ACCESS_TOKEN);
+        await cmdWorklist(client, rest);
+      }
       break;
     }
     case 'list': {
@@ -140,7 +148,81 @@ async function cmdWorklist(client: WorkflowClient, args: string[]) {
     console.log('No work items assigned to this principal.');
     return;
   }
-  console.log(formatWorklist(page));
+  // Convert legacy page to view model for the formatter
+  const view = legacyWorklistPageToView(page);
+  console.log(formatWorklist(view));
+}
+
+/** Minimal adapter: legacy WorklistPage → TodoWorklistPageView */
+function legacyWorklistPageToView(page: import('./contracts.js').WorklistPage): import('./todo-view-models.js').TodoWorklistPageView {
+  const items = page.items.map((item) => {
+    const inst = item.detail.instance;
+    const node = inst.currentNode;
+    const payload =
+      typeof item.detail.currentContext?.payload === 'object' && item.detail.currentContext?.payload !== null
+        ? (item.detail.currentContext.payload as Record<string, unknown>)
+        : {};
+    return {
+      workflowInstanceId: inst.workflowInstanceId,
+      definitionVersionId: inst.definitionVersionId,
+      definitionKey: inst.definitionVersionId.slice(0, 8) + '…',
+      createdAt: inst.createdAt,
+      currentNodeKey: node.nodeKey,
+      currentNodeDisplayName: node.displayName,
+      title: typeof payload.title === 'string' ? payload.title : '(no title)',
+      priority: typeof payload.priority === 'string' ? payload.priority : null,
+    } as import('./todo-view-models.js').TodoWorklistItemView;
+  });
+  return {
+    items,
+    nextCursor: page.nextCursor ? { createdAt: page.nextCursor.createdAt, id: page.nextCursor.id } : null,
+  };
+}
+
+/**
+ * SDK-based my-worklist (assigned-to-me) via Workflow SDK + AuthServiceMachineTokenProvider.
+ *
+ * Only activated when WORKFLOW_TODO_READ_PATH=sdk_auth_v1.
+ * Fail-closed: any error in token fetch or SDK call propagates;
+ * no fallback to legacy path.
+ */
+async function cmdWorklistSdk(args: string[]) {
+  const { mode } = resolveMode(args);
+
+  // Validate that required auth env vars are present
+  const tokenEndpoint = env.AUTH_TOKEN_ENDPOINT;
+  const clientId = env.MACHINE_CLIENT_ID;
+  const clientSecret = env.MACHINE_CLIENT_SECRET;
+
+  if (!tokenEndpoint || !clientId || !clientSecret) {
+    console.error(
+      'ERROR: WORKFLOW_TODO_READ_PATH=sdk_auth_v1 requires ' +
+      'AUTH_TOKEN_ENDPOINT, MACHINE_CLIENT_ID, and MACHINE_CLIENT_SECRET to be set',
+    );
+    process.exit(1);
+  }
+
+  const tokenProvider = new AuthServiceMachineTokenProvider({
+    tokenEndpoint,
+    clientId,
+    clientSecret,
+  });
+
+  const sdkClient = new SDKWorkflowClient({
+    baseUrl: env.SVC_WORKFLOW_BASE_URL,
+    tokenProvider: () => tokenProvider.getToken(),
+    requestTimeoutMs: parseInt(env.REQUEST_TIMEOUT_MS, 10),
+  });
+
+  const sdkPage = await sdkClient.worklistAssignedToMe({ limit: 100 });
+  const view = sdkWorklistPageToView(sdkPage);
+
+  if (mode === 'json') { writeJson(view); return; }
+  if (view.items.length === 0) {
+    console.log('No work items assigned to this principal.');
+    return;
+  }
+  console.log(formatWorklist(view));
 }
 
 /// workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]
