@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Smoke test for the first vertical slice of workflow-todo.
+ * Smoke test for workflow-todo SDK Auth V1 path.
  *
  * Prerequisites:
- *   - svc-workflow is running and reachable at SVC_WORKFLOW_BASE_URL
- *   - agent_self_task_v1 definition is provisioned
- *   - AGENT_A_PRINCIPAL_ID is set (the principal UUID to act as Agent A)
- *   - Access token for Agent A is in SVC_WORKFLOW_ACCESS_TOKEN
+ *   - auth-service running at SVC_AUTH_TOKEN_ENDPOINT
+ *   - svc-workflow running at SVC_WORKFLOW_BASE_URL
+ *   - Machine Client for Agent A provisioned with workflow.read + workflow.execute
  *
  * Flow:
  *   1. Agent A creates an instance → sees it in assigned-to-me (propose)
@@ -16,8 +15,9 @@
  *   4. Agent A cannot execute the efficiency_check transition
  */
 
+import { createSdkAuthWorkflowClient } from '../src/sdk-auth-client-factory.js';
 import { env } from '../src/config.js';
-import { WorkflowClient } from '../src/client.js';
+import { toWorklistPageView } from '../src/sdk-adapter.js';
 
 const PASS = '✅';
 const FAIL = '❌';
@@ -35,41 +35,18 @@ function assert(condition: boolean, message: string): void {
 }
 
 async function main() {
-  console.log('\n=== workflow-todo Smoke Test ===\n');
+  console.log('\n=== workflow-todo SDK Auth V1 Smoke Test ===\n');
 
-  // Validate required env
-  if (!env.AGENT_A_PRINCIPAL_ID) {
-    console.error('ERROR: AGENT_A_PRINCIPAL_ID is required for smoke test');
-    process.exit(1);
-  }
-
-  // Use Agent A's token (we reuse the same token; in production Agent A would have its own)
-  const agentToken = env.SVC_WORKFLOW_ACCESS_TOKEN;
-
-  const agentClient = new WorkflowClient({
-    baseUrl: env.SVC_WORKFLOW_BASE_URL,
-    accessTokenProvider: () => agentToken,
-    requestTimeoutMs: parseInt(env.REQUEST_TIMEOUT_MS, 10),
-    maxAttempts: parseInt(env.MAX_ATTEMPTS, 10) as 1 | 2 | 3,
-  });
-
-  // We need a separate token for the efficiency manager.
-  // For smoke tests, both Agent A and efficiency manager share the same
-  // access token because the test environment uses test-mode auth.
-  // In production, each actor would have distinct tokens.
-  const efficiencyToken = env.SVC_WORKFLOW_ACCESS_TOKEN;
-
-  const efficiencyClient = new WorkflowClient({
-    baseUrl: env.SVC_WORKFLOW_BASE_URL,
-    accessTokenProvider: () => efficiencyToken,
-    requestTimeoutMs: parseInt(env.REQUEST_TIMEOUT_MS, 10),
-    maxAttempts: parseInt(env.MAX_ATTEMPTS, 10) as 1 | 2 | 3,
+  // Create Agent A client using the Machine Token Provider
+  const agentClient = createSdkAuthWorkflowClient();
+  const efficiencyClient = createSdkAuthWorkflowClient({
+    scopes: ['workflow.read', 'workflow.execute'],
   });
 
   // Verify svc-workflow is reachable
   console.log('\n[Preflight]');
   try {
-    await agentClient.assertSmokeReady();
+    const preflight = await agentClient.worklistAssignedToMe();
     console.log(`  ${PASS} svc-workflow is reachable`);
   } catch (e) {
     console.error(`  ${FAIL} svc-workflow preflight failed: ${e}`);
@@ -80,6 +57,7 @@ async function main() {
   // Step 1: Agent A creates an instance
   console.log('\n[Step 1] Agent A creates an instance');
   let instanceId: string;
+  const createKey1 = `smoke-create-${Date.now()}`;
   try {
     const result = await agentClient.create(
       {
@@ -87,12 +65,12 @@ async function main() {
         definitionVersionId: env.DEFINITION_VERSION_ID,
         metadata: {},
         contextPayload: {
-          title: 'Smoke test task',
-          description: 'Created during smoke test',
+          title: 'SDK Smoke test task',
+          description: 'Created during SDK smoke test',
           acceptanceCriteria: 'Smoke test passes',
         },
       },
-      { idempotencyKey: `smoke-create-${Date.now()}` },
+      { idempotencyKey: createKey1 },
     );
     instanceId = result.workflowInstanceId;
     assert(true, `Instance created: ${instanceId}`);
@@ -107,9 +85,9 @@ async function main() {
   try {
     const page = await agentClient.worklistAssignedToMe();
     const found = page.items.some(
-      (item) =>
-        item.detail.instance.workflowInstanceId === instanceId &&
-        item.detail.instance.currentNode.nodeKey === 'propose',
+      (item: { detail: { instance: { workflow_instance_id: string; current_node: { node_key: string } } } }) =>
+        item.detail.instance.workflow_instance_id === instanceId &&
+        item.detail.instance.current_node.node_key === 'propose',
     );
     assert(found, 'Agent A sees the instance in assigned-to-me at propose node');
   } catch (e) {
@@ -120,12 +98,17 @@ async function main() {
   console.log('\n[Step 3] Agent A advances the instance');
   try {
     const detail = await agentClient.detail(instanceId);
-    if (detail.visibility !== 'full') {
+    const raw = detail as unknown as Record<string, unknown>;
+    if (raw.visibility !== 'full') {
       assert(false, 'Instance detail is not full visibility');
       process.exit(1);
     }
-    const advanceTransition = detail.detail.outgoing_transitions.find(
-      (t) => t.transition_effect === 'ADVANCE' && t.executable_for_actor === true,
+    const det = raw.detail as Record<string, unknown>;
+    const instance = det.instance as Record<string, unknown>;
+    const outgoingTransitions = det.outgoing_transitions as Array<Record<string, unknown>> | undefined;
+    const advanceTransition = outgoingTransitions?.find(
+      (t: { transition_effect?: string; executable_for_actor?: boolean }) =>
+        t.transition_effect === 'ADVANCE' && t.executable_for_actor === true,
     );
     if (!advanceTransition) {
       assert(false, 'No executable ADVANCE transition found');
@@ -134,9 +117,9 @@ async function main() {
     await agentClient.transition(
       instanceId,
       {
-        transitionDefinitionId: advanceTransition.transition_id,
-        expectedWorkflowStateVersion: detail.detail.instance.workflow_state_version,
-        submissionPayload: { summary: 'Smoke test proposal' },
+        transitionDefinitionId: advanceTransition.transition_id as string,
+        expectedWorkflowStateVersion: instance.workflow_state_version as number,
+        submissionPayload: { summary: 'SDK Smoke test proposal' },
       },
       { idempotencyKey: `smoke-advance-${Date.now()}` },
     );
@@ -150,9 +133,9 @@ async function main() {
   try {
     const page = await efficiencyClient.worklistAssignedToMe();
     const found = page.items.some(
-      (item) =>
-        item.detail.instance.workflowInstanceId === instanceId &&
-        item.detail.instance.currentNode.nodeKey === 'efficiency_check',
+      (item: { detail: { instance: { workflow_instance_id: string; current_node: { node_key: string } } } }) =>
+        item.detail.instance.workflow_instance_id === instanceId &&
+        item.detail.instance.current_node.node_key === 'efficiency_check',
     );
     assert(found, 'Efficiency manager sees the instance at efficiency_check node');
   } catch (e) {
@@ -164,7 +147,8 @@ async function main() {
   try {
     const page = await agentClient.worklistAssignedToMe();
     const found = page.items.some(
-      (item) => item.detail.instance.workflowInstanceId === instanceId,
+      (item: { detail: { instance: { workflow_instance_id: string } } }) =>
+        item.detail.instance.workflow_instance_id === instanceId,
     );
     assert(!found, 'Agent A no longer sees the instance in assigned-to-me');
   } catch (e) {
@@ -175,20 +159,22 @@ async function main() {
   console.log('\n[Step 6] Agent A attempts efficiency_check transition (should be blocked)');
   try {
     const detail = await agentClient.detail(instanceId);
-    if (detail.visibility === 'full') {
-      const efficiencyTransition = detail.detail.outgoing_transitions.find(
-        (t) => t.transition_effect === 'ADVANCE',
+    const raw = detail as unknown as Record<string, unknown>;
+    if (raw.visibility === 'full') {
+      const det = raw.detail as Record<string, unknown>;
+      const outgoingTransitions = det.outgoing_transitions as Array<Record<string, unknown>> | undefined;
+      const advTrans = outgoingTransitions?.find(
+        (t: { transition_effect?: string }) => t.transition_effect === 'ADVANCE',
       );
-      if (efficiencyTransition) {
+      if (advTrans) {
         assert(
-          !efficiencyTransition.executable_for_actor,
+          !advTrans.executable_for_actor,
           'Efficiency ADVANCE is not executable for Agent A',
         );
       } else {
         assert(false, 'No ADVANCE transition found');
       }
     } else {
-      // Historical participant — Agent A can see the instance but cannot act
       assert(true, 'Instance is historical for Agent A (cannot execute transitions)');
     }
   } catch (e) {

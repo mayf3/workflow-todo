@@ -38,9 +38,13 @@ for (const f of ['.env', '.env.full-migration.local']) {
   if (existsSync(p)) dotenvConfig({ path: p, override: false });
 }
 
-// --- Imports from the project ---
-import { WorkflowClient } from '../src/client.js';
-import type { CreateWorkflowInstanceInput } from '../src/contracts.js';
+// --- Inline types (legacy WorkflowClient has been removed) ---
+interface CreateInput {
+  domainId: string;
+  definitionVersionId: string;
+  metadata: Record<string, unknown>;
+  contextPayload: Record<string, unknown>;
+}
 
 // =========================================================================
 // Config
@@ -133,16 +137,32 @@ function classify(plan: { items: PlanItem[] }) {
   return { ledgerOnly, dogfoodNew, emNew };
 }
 
-function makeClient(token: string): WorkflowClient {
-  return new WorkflowClient({
-    baseUrl: CONFIG.baseUrl,
-    accessTokenProvider: () => token,
-    requestTimeoutMs: 35_000,
-    maxAttempts: 3,
+/**
+ * Minimal fetch-based create for migration (WorkflowClient has been removed).
+ * Kept as a historical artifact — the migration has already been executed.
+ */
+async function createViaFetch(
+  input: CreateInput,
+  idempotencyKey: string,
+  token: string,
+): Promise<{ workflowInstanceId: string; workflowStateVersion: number }> {
+  const response = await fetch(`${CONFIG.baseUrl}/internal/v1/workflow-instances`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify(input),
   });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`HTTP ${response.status}: ${text}`);
+  }
+  return response.json() as Promise<{ workflowInstanceId: string; workflowStateVersion: number }>;
 }
 
-function makeCreateInput(item: PlanItem): CreateWorkflowInstanceInput {
+function makeCreateInput(item: PlanItem): CreateInput {
   return {
     domainId: CONFIG.domainId,
     definitionVersionId: CONFIG.defVersionId,
@@ -246,9 +266,6 @@ async function main() {
   // ── 5. Execute ────────────────────────────────────────────────────────────
   console.log('--- Execution ---\n');
 
-  const dogfoodClient = makeClient(CONFIG.dogfoodToken);
-  const emClient = makeClient(CONFIG.emToken);
-
   // Load previously saved results for resumability
   const existing = loadExistingResults();
 
@@ -257,7 +274,7 @@ async function main() {
   // Helper to process a batch of items
   async function processItems(
     items: PlanItem[],
-    client: WorkflowClient,
+    token: string,
     principal: string,
   ) {
     for (const item of items) {
@@ -272,9 +289,10 @@ async function main() {
 
       const idKey = `legacy-llm-todo:${item.legacyTodoId}`;
       try {
-        const result = await client.create(
+        const result = await createViaFetch(
           makeCreateInput(item),
-          { idempotencyKey: idKey },
+          idKey,
+          token,
         );
 
         results.push({
@@ -326,15 +344,15 @@ async function main() {
   // Process DOGFOOD_USER items
   if (dogfoodNew.length > 0) {
     console.log('\n--- DOGFOOD_USER new ---');
-    await processItems(dogfoodNew, dogfoodClient, 'DOGFOOD_USER');
-    saveResult(results); // Ensure saved even if all items were skipped
+    await processItems(dogfoodNew, CONFIG.dogfoodToken, 'DOGFOOD_USER');
+    saveResult(results);
   }
 
   // Process EFFICIENCY_MANAGER items
   if (emNew.length > 0) {
     console.log('\n--- EFFICIENCY_MANAGER new ---');
-    await processItems(emNew, emClient, 'EFFICIENCY_MANAGER');
-    saveResult(results); // Ensure saved even if all items were skipped
+    await processItems(emNew, CONFIG.emToken, 'EFFICIENCY_MANAGER');
+    saveResult(results);
   }
 
   // ── 6. Final summary ──────────────────────────────────────────────────────
