@@ -6,3 +6,5 @@ dist/
 # Legacy todo remote data — contains PII, not committed
 migration/legacy-llm-todo-v1/private/
 .env.*
+coverage/
+*.tsbuildinfo
