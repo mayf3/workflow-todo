@@ -30,6 +30,9 @@ describe('Config — required auth-service env vars', () => {
   it('throws when SVC_AUTH_TOKEN_ENDPOINT is missing', async () => {
     setAllExcept('SVC_AUTH_TOKEN_ENDPOINT');
     const mod = await import('../src/config.js');
+    // The import triggers dotenvConfig which may re-populate from .env.
+    // Ensure the variable is still absent before testing the accessor.
+    delete process.env.SVC_AUTH_TOKEN_ENDPOINT;
     expect(() => mod.env.SVC_AUTH_TOKEN_ENDPOINT).toThrow(/SVC_AUTH_TOKEN_ENDPOINT/);
   });
 
