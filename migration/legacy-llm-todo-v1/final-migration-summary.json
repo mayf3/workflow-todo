@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "final-migration-summary-v1",
+  "migrationName": "legacy-llm-todo-to-workflow-todo",
+  "executionStatus": "COMPLETED",
+  "executedAt": "2026-07-18T10:17:38.069Z",
+  "sourceSystem": "llm-todo",
+  "targetSystem": "svc-workflow (personal_quick_item_v1)",
+  "plannedItemCount": 82,
+  "succeededItemCount": 65,
+  "failedItemCount": 0,
+  "skippedItemCount": 17,
+  "finalVerificationStatus": "PASS",
+  "preflightReceiptReference": "receipts/full-migration-preflight-receipt-v1.json",
+  "sourceEvidenceFiles": [
+    "generated/two-workflow-migration-plan-v1.json"
+  ],
+  "sourceEvidenceSha256": "a2894943bc6744b02c851882651eec264d8fea15e0344d7e86b256bdd14201d2",
+  "recordSetDigest": "03f0e2eff88b9f1dadc5760d78f9ad5cab87e0d186a61f47c464c14f1a9fe072",
+  "sourceSnapshotSha256": "1000e99e9a907ecef518d6029f0a0f83146811f2287fa212bbd912c1932e7882",
+  "importBatchId": "c68dc995a8fb3a9b273908091004766e",
+  "notes": [
+    "82 legacy items were processed in one batch.",
+    "65 items were successfully created as personal_quick_item_v1 workflow instances (53 under DOGFOOD_USER principal, 12 under EFFICIENCY_MANAGER principal).",
+    "17 items were ledger-only (skipped — already completed, test entries, or duplicates with no workflow instance created).",
+    "0 items failed.",
+    "The agent_self_task_v1 definition was not provisioned in the cutover environment; its verification was deferred.",
+    "After cutover, the legacy llm-todo service was shut down and its write routes removed from the codebase."
+  ]
+}

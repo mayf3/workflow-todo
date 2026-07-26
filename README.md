@@ -138,8 +138,13 @@ and one-time migration tooling from the legacy LLM Todo system. These files are
 
 ## License
 
-[MIT](LICENSE)
+The workflow-todo source code in this repository (excluding third-party
+dependencies and vendored packages) is licensed under [MIT](LICENSE).
 
 The SDK tarballs in `sdk-packages/` are distributed under their own licenses
-as declared in each package's `package.json`. See `@workflow-foundation/sdk`
-(UNLICENSED) and `@unified-auth/machine-token-provider` (MIT).
+as declared in each package's `package.json`:
+- `@unified-auth/machine-token-provider` — MIT
+- `@workflow-foundation/sdk` — UNLICENSED (all rights reserved)
+
+The MIT license at the repository root does **not** override or replace the
+licenses of these vendored packages.
