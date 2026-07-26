@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.x.x
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.x.x
         with:
           node-version: 20
           cache: npm
@@ -32,23 +32,69 @@ jobs:
         run: git diff --check
 
       - name: Gitleaks security scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2.x.x
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Structure constraint check
         run: |
-          MAX_DEPTH=$(find . -not -path '*/node_modules/*' -not -path '*/.git/*' -type f \
+          set -euo pipefail
+
+          EXCLUDE_PATTERNS='node_modules|\.git|dist|package-lock\.json|sdk-packages/.*\.tgz$'
+
+          echo "=== Checking root directory children ==="
+          ROOT_CHILDREN=$(git ls-tree -r --name-only HEAD \
+            | grep -vE "$EXCLUDE_PATTERNS" \
+            | cut -d/ -f1 | sort -u | wc -l)
+          echo "Root children (tracked, non-excluded): $ROOT_CHILDREN"
+          if [ "$ROOT_CHILDREN" -gt 20 ]; then
+            echo "FAIL: root children $ROOT_CHILDREN > 20"
+            exit 1
+          fi
+
+          echo "=== Checking every directory's direct children ==="
+          git ls-tree -r --name-only HEAD \
+            | grep -vE "$EXCLUDE_PATTERNS" \
+            | while IFS=/ read -r dir rest; do
+            if [ -n "$rest" ]; then
+              echo "$dir"
+            fi
+          done | sort -u | while read -r dir; do
+            COUNT=$(git ls-tree -r --name-only HEAD \
+              | grep -vE "$EXCLUDE_PATTERNS" \
+              | grep -E "^$dir/" \
+              | cut -d/ -f2 | sort -u | wc -l)
+            if [ "$COUNT" -gt 20 ]; then
+              echo "FAIL: $dir has $COUNT direct children (>20)"
+              exit 1
+            fi
+          done
+          echo "All directories within child limit."
+
+          echo "=== Checking max directory depth ==="
+          MAX_DEPTH=$(git ls-tree -r --name-only HEAD \
+            | grep -vE "$EXCLUDE_PATTERNS" \
             | awk -F/ '{print NF-1}' | sort -rn | head -1)
-          MAX_LINES=$(find . -not -path '*/node_modules/*' -not -path '*/.git/*' \
-            -not -name 'package-lock.json' -not -path '*/dist/*' -not -path '*/sdk-packages/*' \
-            -not -path '*/generated/*' -type f -exec wc -l {} + | sort -n | tail -1 | awk '{print $1}')
-          ROOT_CHILDREN=$(ls -1 | wc -l)
-
           echo "Max depth: $MAX_DEPTH"
-          echo "Max lines: $MAX_LINES"
-          echo "Root children: $ROOT_CHILDREN"
+          if [ "$MAX_DEPTH" -gt 4 ]; then
+            echo "FAIL: depth $MAX_DEPTH > 4"
+            exit 1
+          fi
 
-          if [ "$MAX_DEPTH" -gt 4 ]; then echo "FAIL: depth $MAX_DEPTH > 4"; exit 1; fi
-          if [ "$ROOT_CHILDREN" -gt 20 ]; then echo "FAIL: root children $ROOT_CHILDREN > 20"; exit 1; fi
-          echo "Structure constraints PASS"
+          echo "=== Checking hand-written file line counts ==="
+          HANDWRITTEN_EXCLUDE='node_modules|\.git|dist|package-lock\.json|sdk-packages|/generated/'
+          HANDWRITTEN_PATTERNS='\.(ts|json|md|yml|yaml|sh)$'
+          FAILED=0
+          while IFS= read -r file; do
+            LINES=$(git show HEAD:"$file" 2>/dev/null | wc -l)
+            if [ "$LINES" -gt 500 ]; then
+              echo "FAIL: $file has $LINES lines (>500)"
+              FAILED=1
+            fi
+          done < <(git ls-tree -r --name-only HEAD \
+            | grep -vE "$HANDWRITTEN_EXCLUDE" \
+            | grep -E "$HANDWRITTEN_PATTERNS")
+          if [ "$FAILED" -ne 0 ]; then exit 1; fi
+          echo "All hand-written files within line limit."
+
+          echo "=== All structure constraints PASS ==="
