@@ -18,7 +18,7 @@ import {
   toProductError,
 } from './sdk-adapter.js';
 import { formatWorklist, formatDetail, formatAdvanceResult, formatDomainWorklist, writeJson } from './formatters.js';
-import { parseOutputMode } from './cli-args.js';
+import { parseOutputMode, resolveIdempotencyKey } from './cli-args.js';
 import type { OutputMode } from './cli-args.js';
 import type { DomainInstanceSummary } from './contracts.js';
 
@@ -86,7 +86,15 @@ async function cmdCreate(args: string[]) {
 }
 
 async function cmdCreateWithDef(args: string[], defVersionId: string, label: string) {
-  const { mode, cleanArgs } = resolveMode(args);
+  const { mode, cleanArgs: modeCleanArgs } = resolveMode(args);
+  const ikResult = resolveIdempotencyKey(modeCleanArgs, `create-${label}`);
+  if (ikResult.error) {
+    console.error(`ERROR: ${ikResult.error}`);
+    process.exit(1);
+  }
+  const cleanArgs = ikResult.cleanArgs;
+  const idempotencyKey = ikResult.key!;
+
   const title = extractArg(cleanArgs, '--title');
   const description = extractArg(cleanArgs, '--description');
   const acceptanceCriteria = extractArg(cleanArgs, '--acceptance-criteria');
@@ -111,7 +119,7 @@ async function cmdCreateWithDef(args: string[], defVersionId: string, label: str
   const client = makeClient();
   const result = await client.create(
     input,
-    { idempotencyKey: `create-${label}-${Date.now()}-${randomSuffix()}` },
+    { idempotencyKey },
   );
 
   const view = toCreateResultView(result);
@@ -269,7 +277,14 @@ async function cmdDetail(args: string[]) {
  * Fail-closed: no admin token fallback, no principal override.
  */
 async function cmdAdvance(args: string[]) {
-  const { mode, cleanArgs } = resolveMode(args);
+  const { mode, cleanArgs: modeCleanArgs } = resolveMode(args);
+  const ikResult = resolveIdempotencyKey(modeCleanArgs, 'advance');
+  if (ikResult.error) {
+    console.error(`ERROR: ${ikResult.error}`);
+    process.exit(1);
+  }
+  const cleanArgs = ikResult.cleanArgs;
+  const idempotencyKey = ikResult.key!;
   const instanceId = extractArg(cleanArgs, '--instance-id');
   const summary = extractArg(cleanArgs, '--summary');
 
@@ -311,7 +326,7 @@ async function cmdAdvance(args: string[]) {
       expectedWorkflowStateVersion: instance.workflow_state_version as number,
       submissionPayload: { summary },
     },
-    { idempotencyKey: `advance-${Date.now()}-${randomSuffix()}` },
+    { idempotencyKey },
   );
 
   const view = toTransitionResultView(result);
@@ -327,19 +342,19 @@ async function cmdAdvance(args: string[]) {
 function showUsage() {
   console.log(`
 Usage:
-  workflow-todo create-quick --title <title> [--description <desc> --acceptance-criteria <criteria>]
+  workflow-todo create-quick --title <title> [--description <desc> --acceptance-criteria <criteria>] [--idempotency-key <key>]
       → 普通 Todo (personal_quick_item_v1)
 
-  workflow-todo create-agent --title <title> [--description <desc> --acceptance-criteria <criteria>]
+  workflow-todo create-agent --title <title> [--description <desc> --acceptance-criteria <criteria>] [--idempotency-key <key>]
       → 正式 Agent 工作 (agent_self_task_v1)
 
-  workflow-todo create --title <title> [--description <desc> --acceptance-criteria <criteria>]
+  workflow-todo create --title <title> [--description <desc> --acceptance-criteria <criteria>] [--idempotency-key <key>]
       → Deprecated: defaults to agent_self_task_v1 (same as create-agent)
 
   workflow-todo my-worklist [--json]
   workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]
   workflow-todo detail --instance-id <uuid> [--json]
-  workflow-todo advance --instance-id <uuid> --summary <text> [--json]
+  workflow-todo advance --instance-id <uuid> --summary <text> [--idempotency-key <key>] [--json]
 `);
 }
 
@@ -347,10 +362,6 @@ function extractArg(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   if (index === -1 || index + 1 >= args.length) return undefined;
   return args[index + 1];
-}
-
-function randomSuffix(): string {
-  return Math.random().toString(36).substring(2, 10);
 }
 
 main().catch((error) => {

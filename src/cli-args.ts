@@ -5,12 +5,13 @@
  * - Parse `--json` / `--format` flags
  * - Validate mode conflicts
  * - Strip mode flags returning clean business-arg list
+ * - Resolve `--idempotency-key` (pure, no side effects)
  *
  * This module MUST NOT:
  *   call HTTP, read tokens, read databases, format workflow data,
  *   execute commands, or call process.exit.
  *
- * Errors are reported as ParseResult with a structured error message.
+ * Errors are reported as structured result objects with optional error string.
  */
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,15 @@ export interface ParseResult {
   mode: OutputMode;
   /** Args with all mode-related flags removed */
   remainingArgs: string[];
+  /** Parsing error, if any */
+  error?: string;
+}
+
+export interface IdempotencyKeyResult {
+  /** Resolved idempotency key (undefined only when error is set) */
+  key?: string;
+  /** Args with `--idempotency-key` and its value removed */
+  cleanArgs: string[];
   /** Parsing error, if any */
   error?: string;
 }
@@ -125,4 +135,67 @@ export function parseOutputMode(args: string[]): ParseResult {
   }
 
   return { mode, remainingArgs };
+}
+
+// ---------------------------------------------------------------------------
+// Idempotency key resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the idempotency key from CLI arguments.
+ *
+ * Rules:
+ *   --idempotency-key not present        → generate a default random key
+ *   --idempotency-key <non-empty value>   → use the provided value (strip from args)
+ *   --idempotency-key without value       → error
+ *   --idempotency-key ""                  → error
+ *   --idempotency-key <value> pointing to next flag → error
+ *   --idempotency-key specified twice     → error
+ *
+ * This function is PURE — it does NOT call process.exit or console.error.
+ * The caller is responsible for handling errors.
+ */
+export function resolveIdempotencyKey(
+  args: string[],
+  defaultPrefix: string,
+): IdempotencyKeyResult {
+  // Find ALL occurrences
+  const positions: number[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--idempotency-key') {
+      positions.push(i);
+    }
+  }
+
+  // Not present → generate default
+  if (positions.length === 0) {
+    const randomSuffix = Math.random().toString(36).substring(2, 10);
+    return {
+      key: `${defaultPrefix}-${Date.now()}-${randomSuffix}`,
+      cleanArgs: args,
+    };
+  }
+
+  // Duplicate
+  if (positions.length > 1) {
+    return { cleanArgs: args, error: '--idempotency-key may only be specified once' };
+  }
+
+  const pos = positions[0];
+
+  // Missing value (end of args)
+  if (pos + 1 >= args.length) {
+    return { cleanArgs: args, error: '--idempotency-key requires a non-empty value' };
+  }
+
+  const value = args[pos + 1];
+
+  // Empty string or value that looks like another flag
+  if (!value || value.startsWith('--')) {
+    return { cleanArgs: args, error: '--idempotency-key requires a non-empty value' };
+  }
+
+  // Strip --idempotency-key and its value from args
+  const cleanArgs = [...args.slice(0, pos), ...args.slice(pos + 2)];
+  return { key: value, cleanArgs };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseOutputMode } from '../src/cli-args.js';
+import { parseOutputMode, resolveIdempotencyKey } from '../src/cli-args.js';
 
 /**
  * Helper: assert parseOutputMode success.
@@ -159,5 +159,87 @@ describe('command-specific arg scenarios', () => {
     // These are not mode flags, they stay
     expect(result.remainingArgs).toEqual(['--manifest', 'path.json', '--apply-canary']);
     expect(result.mode).toBe('text');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveIdempotencyKey tests
+// ---------------------------------------------------------------------------
+
+describe('resolveIdempotencyKey', () => {
+  it('returns default key when flag is absent', () => {
+    const result = resolveIdempotencyKey(['--title', 'hello'], 'create-quick');
+    expect(result.error).toBeUndefined();
+    expect(result.key).toBeDefined();
+    expect(result.key).toContain('create-quick-');
+    expect(result.cleanArgs).toEqual(['--title', 'hello']);
+  });
+
+  it('uses explicit key when provided', () => {
+    const result = resolveIdempotencyKey(
+      ['--title', 'hello', '--idempotency-key', 'my-key-001'],
+      'create-quick',
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.key).toBe('my-key-001');
+    expect(result.cleanArgs).toEqual(['--title', 'hello']);
+  });
+
+  it('strips flag+value regardless of position', () => {
+    const result = resolveIdempotencyKey(
+      ['--idempotency-key', 'pos-before', '--title', 'hello'],
+      'create-agent',
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.key).toBe('pos-before');
+    expect(result.cleanArgs).toEqual(['--title', 'hello']);
+  });
+
+  it('rejects missing value at end of args', () => {
+    const result = resolveIdempotencyKey(
+      ['--title', 'hello', '--idempotency-key'],
+      'create-quick',
+    );
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('requires a non-empty value');
+    expect(result.key).toBeUndefined();
+  });
+
+  it('rejects empty string value', () => {
+    const result = resolveIdempotencyKey(
+      ['--idempotency-key', ''],
+      'advance',
+    );
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('requires a non-empty value');
+    expect(result.key).toBeUndefined();
+  });
+
+  it('rejects value that looks like another flag', () => {
+    const result = resolveIdempotencyKey(
+      ['--idempotency-key', '--title', 'hello'],
+      'create-quick',
+    );
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('requires a non-empty value');
+    expect(result.key).toBeUndefined();
+  });
+
+  it('rejects duplicate --idempotency-key', () => {
+    const result = resolveIdempotencyKey(
+      ['--idempotency-key', 'k1', '--idempotency-key', 'k2'],
+      'create-quick',
+    );
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain('may only be specified once');
+    expect(result.key).toBeUndefined();
+  });
+
+  it('generates non-empty key by default', () => {
+    const result = resolveIdempotencyKey([], 'advance');
+    expect(result.error).toBeUndefined();
+    expect(result.key).toBeDefined();
+    expect(result.key!.length).toBeGreaterThan(10);
+    expect(result.key).toContain('advance-');
   });
 });
