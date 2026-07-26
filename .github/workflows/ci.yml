@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm test
+
+      - name: Whitespace check
+        run: git diff --check
+
+      - name: Gitleaks security scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Structure constraint check
+        run: |
+          MAX_DEPTH=$(find . -not -path '*/node_modules/*' -not -path '*/.git/*' -type f \
+            | awk -F/ '{print NF-1}' | sort -rn | head -1)
+          MAX_LINES=$(find . -not -path '*/node_modules/*' -not -path '*/.git/*' \
+            -not -name 'package-lock.json' -not -path '*/dist/*' -not -path '*/sdk-packages/*' \
+            -not -path '*/generated/*' -type f -exec wc -l {} + | sort -n | tail -1 | awk '{print $1}')
+          ROOT_CHILDREN=$(ls -1 | wc -l)
+
+          echo "Max depth: $MAX_DEPTH"
+          echo "Max lines: $MAX_LINES"
+          echo "Root children: $ROOT_CHILDREN"
+
+          if [ "$MAX_DEPTH" -gt 4 ]; then echo "FAIL: depth $MAX_DEPTH > 4"; exit 1; fi
+          if [ "$ROOT_CHILDREN" -gt 20 ]; then echo "FAIL: root children $ROOT_CHILDREN > 20"; exit 1; fi
+          echo "Structure constraints PASS"

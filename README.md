@@ -135,3 +135,11 @@ Provisioning is a **management action** that requires a Machine Client with
 The `migration/legacy-llm-todo-v1/` directory contains historical audit reports
 and one-time migration tooling from the legacy LLM Todo system. These files are
 **historical evidence** and are not part of the current runtime documentation.
+
+## License
+
+[MIT](LICENSE)
+
+The SDK tarballs in `sdk-packages/` are distributed under their own licenses
+as declared in each package's `package.json`. See `@workflow-foundation/sdk`
+(UNLICENSED) and `@unified-auth/machine-token-provider` (MIT).

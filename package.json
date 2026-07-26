@@ -2,6 +2,7 @@
   "name": "workflow-todo",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Personal / Agent task list built on svc-workflow",
   "scripts": {
