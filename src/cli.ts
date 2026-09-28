@@ -17,10 +17,12 @@ import {
   toTransitionResultView,
   toProductError,
 } from './sdk-adapter.js';
-import { formatWorklist, formatDetail, formatAdvanceResult, formatDomainWorklist, writeJson } from './formatters.js';
+import { formatWorklist, formatDetail, formatAdvanceResult, formatDomainWorklist, formatAttention, writeJson } from './formatters.js';
 import { parseOutputMode, resolveIdempotencyKey } from './cli-args.js';
 import type { OutputMode } from './cli-args.js';
 import type { DomainInstanceSummary } from './contracts.js';
+import { parseAttentionArgs } from './attention.js';
+import { createAttentionClientFromEnv } from './attention-client.js';
 
 // ---------------------------------------------------------------------------
 // CLI entry point
@@ -41,6 +43,7 @@ async function main() {
     case 'list':          await cmdList(rest); break;
     case 'detail':        await cmdDetail(rest); break;
     case 'advance':       await cmdAdvance(rest); break;
+    case 'attention':     await cmdAttention(rest); break;
     default:
       console.error(`Unknown command: ${command}`);
       showUsage();
@@ -335,6 +338,21 @@ async function cmdAdvance(args: string[]) {
   console.log(formatAdvanceResult(instanceId, result as unknown as Parameters<typeof formatAdvanceResult>[1]));
 }
 
+async function cmdAttention(args: string[]) {
+  const parsed = parseAttentionArgs(args);
+  if (parsed.error) {
+    console.error('ERROR: ' + parsed.error);
+    process.exit(1);
+  }
+
+  const view = await createAttentionClientFromEnv().fetchAttention();
+  if (parsed.mode === 'json') {
+    writeJson(view);
+    return;
+  }
+  console.log(formatAttention(view));
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -355,6 +373,8 @@ Usage:
   workflow-todo list --all [--status active|completed|cancelled|all] [--assignee <uuid>] [--definition quick|agent] [--json]
   workflow-todo detail --instance-id <uuid> [--json]
   workflow-todo advance --instance-id <uuid> --summary <text> [--idempotency-key <key>] [--json]
+  workflow-todo attention [--json]
+      → Read-only unified OWNER_PENDING / HUMAN_REQUIRED attention view
 `);
 }
 

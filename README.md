@@ -8,6 +8,7 @@ Personal / Agent task list built on [svc-workflow](https://github.com/your-org/s
   - View assigned work items (`my-worklist`)
   - Browse domain-level instances (`list --all`)
   - View task details (`detail`)
+  - View authoritative attention items (`attention`)
   - Create quick items or agent self tasks (`create-quick`, `create-agent`)
   - Advance authorized workflow nodes (`advance`)
 - **svc-workflow** — The single Workflow state machine and data authority
@@ -90,13 +91,16 @@ workflow-todo detail --instance-id <uuid> [--json]
 
 workflow-todo advance --instance-id <uuid> --summary <text> [--idempotency-key <key>] [--json]
     → Advance the workflow to the next node
+
+workflow-todo attention [--json]
+    → Read-only OWNER_PENDING / HUMAN_REQUIRED attention view; execution attention is reported unavailable until wired
 ```
 
 ## Permission Requirements
 
 | Scope | Operations |
 |---|---|
-| `workflow.read` | `my-worklist`, `detail`, `list --all` (read-only) |
+| `workflow.read` | `my-worklist`, `detail`, `list --all`, `attention` (read-only) |
 | `workflow.execute` | `create-quick`, `create-agent`, `advance` |
 | `workflow.admin` | `npm run provision` (definition + domain role bindings) |
 

@@ -15,6 +15,7 @@ import type {
   ExecuteWorkflowTransitionResult,
 } from './contracts.js';
 import type { TodoWorklistPageView } from './todo-view-models.js';
+import type { AttentionView } from './attention.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -234,4 +235,50 @@ ${'='.repeat(60)}
 
 export function writeJson(data: unknown): void {
   process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+}
+
+
+// ---------------------------------------------------------------------------
+// Attention formatter (read-only)
+// ---------------------------------------------------------------------------
+
+export function formatAttention(view: AttentionView): string {
+  const lines: string[] = ['Attention items: ' + view.items.length, ''];
+
+  if (view.items.length === 0) {
+    lines.push('No authoritative attention items are currently visible.');
+  } else {
+    for (const item of view.items) {
+      lines.push('[' + item.attentionState + '] ' + (item.message || '(no message)'));
+      lines.push('  Workflow: ' + item.workflowInstanceId);
+      lines.push('  Assistance: ' + item.assistanceCaseId);
+      if (item.nodeVisitId) lines.push('  Node visit: ' + item.nodeVisitId);
+      if (item.nodeDisplayName) lines.push('  Node: ' + item.nodeDisplayName);
+      lines.push('  Attention at: ' + formatTimestamp(item.attentionAt));
+      lines.push('  Detail: ' + item.detailRef);
+      lines.push('');
+    }
+  }
+
+  lines.push('Sources');
+  lines.push(
+    '  Owner assistance: '
+      + (view.sources.ownerAssistance.available
+        ? 'available'
+        : 'unavailable (' + (view.sources.ownerAssistance.reason ?? 'unknown') + ')'),
+  );
+  lines.push(
+    '  Human required: '
+      + (view.sources.humanRequired.available
+        ? 'available'
+        : 'unavailable (' + (view.sources.humanRequired.reason ?? 'unknown') + ')'),
+  );
+  lines.push(
+    '  Execution attention: '
+      + (view.sources.executionAttention.available
+        ? 'available'
+        : 'unavailable (' + (view.sources.executionAttention.reason ?? 'unknown') + ')'),
+  );
+
+  return lines.join('\n').trimEnd();
 }
