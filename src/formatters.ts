@@ -250,11 +250,34 @@ export function formatAttention(view: AttentionView): string {
   } else {
     for (const item of view.items) {
       lines.push('[' + item.attentionState + '] ' + (item.message || '(no message)'));
+      lines.push('  Source: ' + item.source);
       lines.push('  Workflow: ' + item.workflowInstanceId);
-      lines.push('  Assistance: ' + item.assistanceCaseId);
+      if (item.assistanceCaseId) lines.push('  Assistance: ' + item.assistanceCaseId);
       if (item.nodeVisitId) lines.push('  Node visit: ' + item.nodeVisitId);
       if (item.nodeDisplayName) lines.push('  Node: ' + item.nodeDisplayName);
-      lines.push('  Attention at: ' + formatTimestamp(item.attentionAt));
+      if (item.kind === 'execution') {
+        if (item.attemptCount !== undefined) {
+          lines.push(
+            '  Attempts: ' + item.attemptCount
+              + (item.attemptBudgetExhausted ? ' (budget exhausted)' : ''),
+          );
+        }
+        if (item.agentId) lines.push('  Agent: ' + item.agentId);
+        if (item.sessionId) lines.push('  Session: ' + item.sessionId);
+        if (item.attentionAt) lines.push('  Updated: ' + formatTimestamp(item.attentionAt));
+      } else {
+        lines.push('  Attention at: ' + formatTimestamp(item.attentionAt));
+        const evidence = item.executionEvidence;
+        if (evidence) {
+          let summary =
+            '  Execution evidence (' + evidence.source + '): ' + evidence.executionState;
+          if (evidence.attemptCount !== undefined) {
+            summary += ', attempts: ' + evidence.attemptCount
+              + (evidence.attemptBudgetExhausted ? ' (budget exhausted)' : '');
+          }
+          lines.push(summary);
+        }
+      }
       lines.push('  Detail: ' + item.detailRef);
       lines.push('');
     }
@@ -279,6 +302,12 @@ export function formatAttention(view: AttentionView): string {
         ? 'available'
         : 'unavailable (' + (view.sources.executionAttention.reason ?? 'unknown') + ')'),
   );
+  if (view.executionCounts) {
+    lines.push(
+      '  Execution attention counts: '
+        + Object.entries(view.executionCounts).map(([k, v]) => k + '=' + v).join(', '),
+    );
+  }
 
   return lines.join('\n').trimEnd();
 }

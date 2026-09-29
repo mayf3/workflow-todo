@@ -5,16 +5,25 @@ import {
   type AssistancePageWire,
   type AttentionSourceAvailability,
   type AttentionView,
+  type ExecutionAttentionItemWire,
+  type ExecutionAttentionResponseWire,
   type HumanRequiredAssistanceCaseWire,
   type OwnerAssistanceCaseWire,
   type RawAttentionSources,
 } from './attention.js';
+
+export interface ExecutionSourceDependencies {
+  baseUrl: string;
+  tokenProvider: () => Promise<string>;
+}
 
 export interface AttentionClientDependencies {
   baseUrl: string;
   tokenProvider: () => Promise<string>;
   requestTimeoutMs: number;
   fetch: typeof fetch;
+  /** dsh-agent-core execution attention source; absent = source unavailable. */
+  execution?: ExecutionSourceDependencies | null;
 }
 
 export interface AttentionClient {
@@ -28,15 +37,17 @@ class SourceHttpError extends Error {
 }
 
 async function fetchJson<T>(
-  deps: AttentionClientDependencies,
-  pathOrUrl: string,
+  fetchImpl: typeof fetch,
+  requestTimeoutMs: number,
+  tokenProvider: () => Promise<string>,
+  url: string,
 ): Promise<T> {
-  const token = await deps.tokenProvider();
+  const token = await tokenProvider();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), deps.requestTimeoutMs);
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
 
   try {
-    const response = await deps.fetch(new URL(pathOrUrl, deps.baseUrl), {
+    const response = await fetchImpl(new URL(url), {
       method: 'GET',
       headers: { authorization: 'Bearer ' + token },
       signal: controller.signal,
@@ -75,7 +86,12 @@ async function fetchPaged<T>(
       url.searchParams.set('beforeId', cursor.id);
     }
 
-    const page = await fetchJson<AssistancePageWire<T>>(deps, url.toString());
+    const page = await fetchJson<AssistancePageWire<T>>(
+      deps.fetch,
+      deps.requestTimeoutMs,
+      deps.tokenProvider,
+      url.toString(),
+    );
     items.push(...page.items);
     cursor = page.nextCursor;
   } while (cursor);
@@ -102,6 +118,57 @@ async function sourceOrUnavailable<T>(
   }
 }
 
+type ExecutionSourceResult = RawAttentionSources['execution'];
+
+async function fetchExecutionAttention(
+  deps: AttentionClientDependencies,
+  exec: ExecutionSourceDependencies,
+): Promise<ExecutionAttentionResponseWire> {
+  const url = new URL('/workflow-execution/attention', exec.baseUrl);
+  // dsh contract: the attention summary is zero-parameter — send no query.
+  return fetchJson<ExecutionAttentionResponseWire>(
+    deps.fetch,
+    deps.requestTimeoutMs,
+    exec.tokenProvider,
+    url.toString(),
+  );
+}
+
+/**
+ * The execution source is read-only supplementary evidence: ANY failure
+ * (not configured, 401/403/404/503, transport) degrades to an explicit
+ * `unavailable` reason instead of hiding svc-workflow assistance or
+ * crashing the command. Records are never fabricated.
+ */
+async function executionSourceOrUnavailable(
+  deps: AttentionClientDependencies,
+): Promise<ExecutionSourceResult> {
+  const exec = deps.execution;
+  if (!exec || !exec.baseUrl) {
+    return {
+      availability: { available: false, reason: 'DSH_BASE_URL_NOT_CONFIGURED' },
+      items: [],
+    };
+  }
+  try {
+    const body = await fetchExecutionAttention(deps, exec);
+    return {
+      availability: { available: true },
+      items: Array.isArray(body.items) ? body.items : [],
+      ...(body.counts ? { counts: body.counts } : {}),
+      ...(body.generatedAtMs !== undefined ? { generatedAtMs: body.generatedAtMs } : {}),
+    };
+  } catch (error) {
+    const reason = error instanceof SourceHttpError
+      ? 'HTTP_' + error.status
+      : 'DSH_UNREACHABLE (' + (error instanceof Error ? error.message : String(error)) + ')';
+    return {
+      availability: { available: false, reason },
+      items: [],
+    };
+  }
+}
+
 export function createAttentionClient(
   deps: AttentionClientDependencies,
 ): AttentionClient {
@@ -117,7 +184,7 @@ export function createAttentionClient(
 
   return {
     async fetchAttention(): Promise<AttentionView> {
-      const [owner, human] = await Promise.all([
+      const [owner, human, execution] = await Promise.all([
         sourceOrUnavailable(() => fetchPaged<OwnerAssistanceCaseWire>(
           deps,
           '/internal/v1/assistance-cases/owner-inbox',
@@ -128,9 +195,10 @@ export function createAttentionClient(
           '/internal/v1/assistance-cases/human-required',
           'beforeEscalatedAt',
         )),
+        executionSourceOrUnavailable(deps),
       ]);
 
-      const raw: RawAttentionSources = { owner, human };
+      const raw: RawAttentionSources = { owner, human, execution };
       return buildAttentionView(raw);
     },
   };
@@ -150,10 +218,30 @@ export function createAttentionClientFromEnv(): AttentionClient {
     fetch: doFetch,
   });
 
+  // The dsh execution attention endpoint requires a token carrying
+  // `workflow.execute`; it is minted from the same machine credential with
+  // its own resource/scope configuration. No static token is ever used.
+  const dshBaseUrl = env.DSH_AGENT_CORE_BASE_URL;
+  const execution: ExecutionSourceDependencies | null = dshBaseUrl
+    ? {
+        baseUrl: dshBaseUrl,
+        tokenProvider: createMachineTokenProvider({
+          tokenEndpoint: env.SVC_AUTH_TOKEN_ENDPOINT,
+          clientId: env.SVC_AUTH_MACHINE_CLIENT_ID,
+          credentialProvider: () => env.SVC_AUTH_MACHINE_CLIENT_SECRET,
+          resource: env.DSH_AUTH_MACHINE_RESOURCE,
+          scopes: env.DSH_AUTH_MACHINE_SCOPES.split(',').map((s) => s.trim()).filter(Boolean),
+          timeoutMs: requestTimeoutMs,
+          fetch: doFetch,
+        }),
+      }
+    : null;
+
   return createAttentionClient({
     baseUrl: env.SVC_WORKFLOW_BASE_URL,
     tokenProvider,
     requestTimeoutMs,
     fetch: doFetch,
+    execution,
   });
 }
