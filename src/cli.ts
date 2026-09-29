@@ -374,7 +374,9 @@ Usage:
   workflow-todo detail --instance-id <uuid> [--json]
   workflow-todo advance --instance-id <uuid> --summary <text> [--idempotency-key <key>] [--json]
   workflow-todo attention [--json]
-      → Read-only unified OWNER_PENDING / HUMAN_REQUIRED attention view
+      → Read-only attention view: svc-workflow OWNER_PENDING / HUMAN_REQUIRED
+        assistance, plus dsh-agent-core execution attention evidence when
+        DSH_AGENT_CORE_BASE_URL is configured (source availability always shown)
 `);
 }
 
