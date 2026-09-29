@@ -61,6 +61,26 @@ export const env = {
 
   // -- Workflow domain and definition configuration --
 
+  // -- dsh-agent-core execution attention evidence (read-only, optional) --
+  //
+  // When DSH_AGENT_CORE_BASE_URL is set, `workflow-todo attention` also
+  // aggregates read-only execution evidence from
+  // GET {DSH_AGENT_CORE_BASE_URL}/workflow-execution/attention. The token is
+  // minted from the same machine credential; dsh requires `workflow.execute`
+  // scope. If unset or unreachable, the execution source is reported
+  // unavailable with its reason — svc-workflow assistance stays visible.
+
+  /** Base URL for dsh-agent-core product-api. Empty = execution source unavailable. */
+  get DSH_AGENT_CORE_BASE_URL(): string { return optional('DSH_AGENT_CORE_BASE_URL', '')(); },
+
+  /** Target resource/audience for the dsh execution token (default: svc-workflow resource). */
+  get DSH_AUTH_MACHINE_RESOURCE(): string {
+    return optional('DSH_AUTH_MACHINE_RESOURCE', process.env.SVC_AUTH_MACHINE_RESOURCE ?? 'svc-workflow')();
+  },
+
+  /** Comma-separated scopes for the dsh execution token (dsh gate requires workflow.execute). */
+  get DSH_AUTH_MACHINE_SCOPES(): string { return optional('DSH_AUTH_MACHINE_SCOPES', 'workflow.execute')(); },
+
   get DOMAIN_ID(): string { return required('DOMAIN_ID')(); },
   get PERSONAL_QUICK_ITEM_DEFINITION_VERSION_ID(): string { return required('PERSONAL_QUICK_ITEM_DEFINITION_VERSION_ID')(); },
   get AGENT_SELF_TASK_DEFINITION_VERSION_ID(): string { return required('AGENT_SELF_TASK_DEFINITION_VERSION_ID')(); },

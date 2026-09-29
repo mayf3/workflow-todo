@@ -58,6 +58,21 @@ npm run build
 | `LOBSTER_PARTNER_PRINCIPAL_ID` | Yes | Partner principal UUID |
 | `SVC_WORKFLOW_REQUEST_TIMEOUT_MS` | No | Request timeout in ms (default: 35000) |
 
+### Execution Attention Evidence (optional, read-only)
+
+When set, `workflow-todo attention` also aggregates read-only execution
+evidence from dsh-agent-core (`GET {base}/workflow-execution/attention`,
+dsh-agent-core main @ `5c5f6ce6`). Execution facts are evidence only —
+svc-workflow remains business truth. If unset or unreachable, the view
+reports the execution source unavailable with its reason and still shows
+all svc-workflow assistance.
+
+| Variable | Required | Description |
+|---|---|---|
+| `DSH_AGENT_CORE_BASE_URL` | No | dsh-agent-core product-api base URL; unset = execution source unavailable |
+| `DSH_AUTH_MACHINE_RESOURCE` | No | Token resource for the dsh call (default: `SVC_AUTH_MACHINE_RESOURCE`) |
+| `DSH_AUTH_MACHINE_SCOPES` | No | Comma-separated scopes for the dsh call (default: `workflow.execute` — the dsh bearer gate requirement) |
+
 ### Provisioning / Admin (workflow.admin)
 
 These are used **only** by the provisioning script (`npm run provision`),
@@ -93,7 +108,9 @@ workflow-todo advance --instance-id <uuid> --summary <text> [--idempotency-key <
     → Advance the workflow to the next node
 
 workflow-todo attention [--json]
-    → Read-only OWNER_PENDING / HUMAN_REQUIRED attention view; execution attention is reported unavailable until wired
+    → Read-only attention view: svc-workflow OWNER_PENDING / HUMAN_REQUIRED
+      assistance plus dsh-agent-core execution attention evidence when
+      DSH_AGENT_CORE_BASE_URL is configured; per-source availability always shown
 ```
 
 ## Permission Requirements
