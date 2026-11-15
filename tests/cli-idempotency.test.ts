@@ -19,12 +19,14 @@ const mockWorklistAssignedToMe = vi.fn();
 const mockDetail = vi.fn();
 
 vi.mock('@workflow-foundation/sdk', () => ({
-  WorkflowClient: vi.fn().mockImplementation((_config: Record<string, unknown>) => ({
-    create: mockCreate,
-    transition: mockTransition,
-    worklistAssignedToMe: mockWorklistAssignedToMe,
-    detail: mockDetail,
-  })),
+  WorkflowClient: vi.fn().mockImplementation(function MockWorkflowClient(_config: Record<string, unknown>) {
+    return {
+      create: mockCreate,
+      transition: mockTransition,
+      worklistAssignedToMe: mockWorklistAssignedToMe,
+      detail: mockDetail,
+    };
+  }),
 }));
 
 // ---------------------------------------------------------------------------
